@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScopioLabs FF-BMA — Test Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; }
+    nav { position: fixed; top: 0; left: 0; right: 0; background: #1a1d27; padding: 12px 24px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 100; border-bottom: 2px solid #2563eb; }
+    nav a { color: #94a3b8; text-decoration: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; transition: all 0.2s; cursor: pointer; }
+    nav a:hover { background: #2563eb22; color: #60a5fa; }
+    nav a.active { background: #2563eb; color: white; }
+    .logo { font-weight: 700; color: #2563eb; font-size: 16px; margin-right: 16px; line-height: 32px; }
+    main { margin-top: 72px; padding: 32px; }
+    section { display: none; min-height: 80vh; padding: 48px; border-radius: 12px; background: #1a1d27; margin-bottom: 24px; }
+    section.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    h1 { font-size: 28px; margin-bottom: 16px; color: #f1f5f9; }
+    h2 { font-size: 20px; margin-bottom: 12px; color: #94a3b8; }
+    p { line-height: 1.7; color: #94a3b8; max-width: 720px; margin-bottom: 12px; }
+    .badge { display: inline-block; background: #16a34a22; color: #4ade80; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-bottom: 16px; }
+    .metric { display: inline-block; background: #1e293b; padding: 16px 24px; border-radius: 8px; margin: 8px 8px 8px 0; text-align: center; }
+    .metric .value { font-size: 32px; font-weight: 700; color: #2563eb; }
+    .metric .label { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 16px; }
+    .card { background: #1e293b; padding: 20px; border-radius: 8px; border: 1px solid #334155; }
+    .card h3 { color: #f1f5f9; margin-bottom: 8px; font-size: 15px; }
+    .card p { font-size: 14px; margin-bottom: 0; }
+    .step-indicator { position: fixed; bottom: 24px; right: 24px; background: #2563eb; color: white; padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; z-index: 100; }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="logo">ScopioLabs</span>
+    <a data-section="home" href="#home" class="active">Home</a>
+    <a data-section="overview" href="#overview">Overview</a>
+    <a data-section="scan" href="#scan">Scan Viewer</a>
+    <a data-section="ndc" href="#ndc">AI Differential</a>
+    <a data-section="quantification" href="#quantification">Quantification</a>
+    <a data-section="remote" href="#remote">Remote Access</a>
+    <a data-section="report" href="#report">Reports</a>
+    <a data-section="integration" href="#integration">Integration</a>
+    <a data-section="summary" href="#summary">Summary</a>
+  </nav>
+
+  <main>
+    <section id="home" class="active">
+      <span class="badge">FDA CLEARED</span>
+      <h1>Full-Field BMA Digital Analysis</h1>
+      <p>The world's first FDA-cleared digital bone marrow aspirate application. Full-field imaging at 100x with AI-powered decision support.</p>
+      <div style="margin-top: 24px;">
+        <div class="metric"><div class="value">100x</div><div class="label">Oil-immersion equivalent</div></div>
+        <div class="metric"><div class="value">500+</div><div class="label">Cells analyzed</div></div>
+        <div class="metric"><div class="value">&lt;2min</div><div class="label">Scan time</div></div>
+      </div>
+    </section>
+
+    <section id="overview">
+      <h1>The BMA Challenge Today</h1>
+      <p>Manual bone marrow aspirate analysis relies on pathologists visually scanning slides under a microscope, counting 200–500 cells by hand. This introduces significant inter-observer variability and limits the representativeness of the sample.</p>
+      <div class="card-grid">
+        <div class="card"><h3>Manual Counting</h3><p>200–500 cells manually classified under microscope</p></div>
+        <div class="card"><h3>Observer Variability</h3><p>Significant disagreement between pathologists on cell classification</p></div>
+        <div class="card"><h3>Physical Slides</h3><p>Glass slides must be transported, risking breakage and misidentification</p></div>
+        <div class="card"><h3>Limited Access</h3><p>Only one reviewer can examine a slide at a time</p></div>
+      </div>
+    </section>
+
+    <section id="scan">
+      <h1>Full-Field Imaging at 100x</h1>
+      <p>Our scanner captures the entire bone marrow sample at 100x oil-immersion equivalent resolution. Full field of view with no compromise on detail.</p>
+      <div style="background: #0f1117; border-radius: 8px; padding: 48px; text-align: center; margin-top: 24px; border: 1px solid #334155;">
+        <p style="color: #64748b; font-style: italic;">[Full-field scan viewer — interactive zoom and pan]</p>
+        <div style="margin-top: 16px; display: flex; justify-content: center; gap: 12px;">
+          <div style="width: 60px; height: 60px; border-radius: 50%; background: #7c3aed33; border: 2px solid #7c3aed;"></div>
+          <div style="width: 45px; height: 45px; border-radius: 50%; background: #ef444433; border: 2px solid #ef4444; margin-top: 8px;"></div>
+          <div style="width: 55px; height: 55px; border-radius: 50%; background: #2563eb33; border: 2px solid #2563eb; margin-top: 3px;"></div>
+          <div style="width: 50px; height: 50px; border-radius: 50%; background: #16a34a33; border: 2px solid #16a34a; margin-top: 5px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="ndc">
+      <h1>AI-Powered Differential Count</h1>
+      <p>The AI engine performs a full nucleated differential count (NDC), classifying hundreds of cells across the entire sample — far beyond the typical 200–500 cell manual count.</p>
+      <div class="card-grid">
+        <div class="card"><h3>Neutrophils</h3><p>42.3% — 211 cells identified</p></div>
+        <div class="card"><h3>Lymphocytes</h3><p>18.7% — 93 cells identified</p></div>
+        <div class="card"><h3>Erythroid precursors</h3><p>24.1% — 120 cells identified</p></div>
+        <div class="card"><h3>Blasts</h3><p>1.2% — 6 cells identified</p></div>
+      </div>
+    </section>
+
+    <section id="quantification">
+      <h1>Quantitative Analysis</h1>
+      <h2>M:E Ratio &amp; Megakaryocyte Count</h2>
+      <p>Automatically calculated myeloid-to-erythroid ratio and megakaryocyte count with spatial distribution mapping.</p>
+      <div style="margin-top: 24px;">
+        <div class="metric"><div class="value">2.1:1</div><div class="label">M:E Ratio</div></div>
+        <div class="metric"><div class="value">8</div><div class="label">Megakaryocytes / LPF</div></div>
+        <div class="metric"><div class="value">498</div><div class="label">Total cells counted</div></div>
+      </div>
+    </section>
+
+    <section id="remote">
+      <h1>Remote Access &amp; Collaboration</h1>
+      <p>Any authorized hematopathologist can review the full digital sample from anywhere on your secure hospital network. No physical slide transport required.</p>
+      <div class="card-grid">
+        <div class="card"><h3>Secure Network Access</h3><p>Data stays within your hospital infrastructure</p></div>
+        <div class="card"><h3>Real-time Collaboration</h3><p>Multiple reviewers can access the same sample simultaneously</p></div>
+        <div class="card"><h3>Second Opinions</h3><p>Remote consultations without scheduling around microscope availability</p></div>
+      </div>
+    </section>
+
+    <section id="report">
+      <h1>Digital Report Generation</h1>
+      <p>Every analysis generates a shareable, traceable digital report with consistent and repeatable results across reviewers.</p>
+      <div style="background: #0f1117; border-radius: 8px; padding: 24px; margin-top: 24px; border: 1px solid #334155;">
+        <h3 style="color: #f1f5f9; margin-bottom: 12px;">Sample Report Preview</h3>
+        <p style="font-size: 13px;">Patient: [DEMO] &bull; Accession: BMA-2026-0042 &bull; Date: 2026-04-02</p>
+        <p style="font-size: 13px;">NDC: 498 cells &bull; M:E: 2.1:1 &bull; Megakaryocytes: 8/LPF &bull; Blasts: 1.2%</p>
+        <p style="font-size: 13px; color: #4ade80;">Status: Ready for review</p>
+      </div>
+    </section>
+
+    <section id="integration">
+      <h1>LIS / LIMS Integration</h1>
+      <p>Results flow directly into your existing Laboratory Information System. No manual data entry, no transcription errors.</p>
+      <div class="card-grid">
+        <div class="card"><h3>HL7 / FHIR</h3><p>Standard integration protocols supported</p></div>
+        <div class="card"><h3>Bidirectional</h3><p>Orders in, results out — fully automated</p></div>
+        <div class="card"><h3>Custom Mapping</h3><p>Integration team maps fields to your specific LIS configuration</p></div>
+      </div>
+    </section>
+
+    <section id="summary">
+      <h1>Summary</h1>
+      <p>Scopio's Full-Field BMA brings digital transformation to bone marrow analysis — FDA-cleared, AI-powered, and ready to integrate into your workflow.</p>
+      <div style="margin-top: 24px;">
+        <div class="metric"><div class="value">1st</div><div class="label">FDA-cleared digital BMA</div></div>
+        <div class="metric"><div class="value">100x</div><div class="label">Full-field resolution</div></div>
+        <div class="metric"><div class="value">AI</div><div class="label">Decision support</div></div>
+        <div class="metric"><div class="value">0</div><div class="label">Glass slides needed</div></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="step-indicator" id="step-indicator">Step: Home</div>
+
+  <script>
+    const sections = document.querySelectorAll('section');
+    const navLinks = document.querySelectorAll('nav a');
+    const indicator = document.getElementById('step-indicator');
+
+    function showSection(id) {
+      sections.forEach(s => s.classList.remove('active'));
+      navLinks.forEach(a => a.classList.remove('active'));
+      const section = document.getElementById(id);
+      const link = document.querySelector(`nav a[href="#${id}"]`);
+      if (section) section.classList.add('active');
+      if (link) link.classList.add('active');
+      indicator.textContent = `Step: ${link ? link.textContent : id}`;
+    }
+
+    navLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const id = link.getAttribute('href').slice(1);
+        showSection(id);
+        history.pushState(null, '', `#${id}`);
+      });
+    });
+
+    window.addEventListener('hashchange', () => {
+      const id = location.hash.slice(1) || 'home';
+      showSection(id);
+    });
+
+    // Show initial section from hash
+    const initial = location.hash.slice(1) || 'home';
+    showSection(initial);
+  </script>
+</body>
+</html>

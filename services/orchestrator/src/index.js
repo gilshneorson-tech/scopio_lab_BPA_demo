@@ -40,6 +40,38 @@ function initClients() {
   persistenceClient = createPersistenceClient(process.env.PERSISTENCE_GRPC_ADDR || 'localhost:50055');
 }
 
+// ─── gRPC helpers (callback → promise) ───
+
+function browserExecuteAction(action) {
+  return new Promise((resolve) => {
+    if (!browserClient) return resolve({ success: false, message: 'No browser client' });
+    browserClient.executeAction(action, (err, result) => {
+      if (err) return resolve({ success: false, message: err.message });
+      resolve(result);
+    });
+  });
+}
+
+function browserInitialize(request) {
+  return new Promise((resolve) => {
+    if (!browserClient) return resolve({ success: false, message: 'No browser client' });
+    browserClient.initialize(request, (err, result) => {
+      if (err) return resolve({ success: false, message: err.message });
+      resolve(result);
+    });
+  });
+}
+
+function claudeDecide(request) {
+  return new Promise((resolve, reject) => {
+    if (!claudeClient) return reject(new Error('Claude service not available'));
+    claudeClient.decide(request, (err, result) => {
+      if (err) return reject(err);
+      resolve(result);
+    });
+  });
+}
+
 // ─── Session helpers ───
 
 function createSession(callId, prospectName) {
@@ -55,10 +87,20 @@ function createSession(callId, prospectName) {
 
   actor.start();
   actor.send({ type: 'START', callId, prospectName });
+
+  // Auto-transition past 'joining' for manual/HTTP mode
+  actor.send({ type: 'PROSPECT_JOINED', prospectName: prospectName || 'Demo Prospect' });
+
   sessions.set(callId, actor);
 
   setSessionStarted(callId, Date.now());
   setProspectName(callId, prospectName);
+
+  // Initialize browser (non-blocking, graceful failure)
+  browserInitialize({ call_id: callId, url: process.env.BMA_URL || '' }).then((result) => {
+    if (result.success) logger.info({ callId }, 'Browser initialized for session');
+    else logger.warn({ callId, msg: result.message }, 'Browser init skipped (degraded mode)');
+  });
 
   return actor;
 }
@@ -98,56 +140,57 @@ async function handleTranscription(call, callback) {
   const step = getStep(ctx.currentStep);
   const history = await getHistory(call_id, 5);
 
-  // Ask Claude what to do
-  claudeClient.decide(
-    {
+  try {
+    const response = await claudeDecide({
       call_id,
       current_step: ctx.currentStep,
       step_description: `Step ${step.index}: ${step.topic} — ${step.script}`,
       conversation_history: history,
       prospect_transcript: text,
-    },
-    (err, response) => {
-      if (err) {
-        logger.error({ err, call_id }, 'Claude decision failed');
-        return callback(null, {
-          call_id,
-          type: 'WAIT',
-          response_text: '',
-          demo_step: ctx.currentStep,
-        });
-      }
+    });
 
-      const { action, response_text } = response;
+    const { action, response_text } = response;
 
-      // Update state machine
-      if (action === 'ADVANCE') {
-        actor.send({ type: 'ADVANCE' });
-      } else if (action === 'ANSWER') {
-        actor.send({ type: 'ANSWER', question: text, answer: response_text });
-      } else if (action === 'REPEAT') {
-        actor.send({ type: 'REPEAT' });
-      } else if (action === 'CLOSE') {
-        actor.send({ type: 'CLOSE' });
-      }
+    // Update state machine
+    if (action === 'ADVANCE') {
+      actor.send({ type: 'ADVANCE' });
+    } else if (action === 'ANSWER') {
+      actor.send({ type: 'ANSWER', question: text, answer: response_text });
+    } else if (action === 'REPEAT') {
+      actor.send({ type: 'REPEAT' });
+    } else if (action === 'CLOSE') {
+      actor.send({ type: 'CLOSE' });
+    }
 
-      // Record exchange
-      appendHistory(call_id, { role: 'prospect', text, timestamp: Date.now() });
-      appendHistory(call_id, { role: 'agent', text: response_text, timestamp: Date.now() });
+    // Record exchange
+    appendHistory(call_id, { role: 'prospect', text, timestamp: Date.now() });
+    appendHistory(call_id, { role: 'agent', text: response_text, timestamp: Date.now() });
 
-      // Build browser command for the current/next step
-      const updatedSnapshot = actor.getSnapshot();
-      const nextStep = getStep(updatedSnapshot.context.currentStep);
+    // Dispatch browser command
+    const updatedSnapshot = actor.getSnapshot();
+    const nextStep = getStep(updatedSnapshot.context.currentStep);
+    browserExecuteAction({
+      call_id,
+      type: 0, // NAVIGATE
+      section: nextStep.browser_action.section,
+    });
 
-      callback(null, {
-        call_id,
-        type: action,
-        response_text,
-        browser_command: nextStep.browser_action,
-        demo_step: updatedSnapshot.context.currentStep,
-      });
-    },
-  );
+    callback(null, {
+      call_id,
+      type: action,
+      response_text,
+      browser_command: nextStep.browser_action,
+      demo_step: updatedSnapshot.context.currentStep,
+    });
+  } catch (err) {
+    logger.error({ err, call_id }, 'Claude decision failed');
+    callback(null, {
+      call_id,
+      type: 'WAIT',
+      response_text: '',
+      demo_step: ctx.currentStep,
+    });
+  }
 }
 
 function handleParticipantEvent(call, callback) {
@@ -180,7 +223,7 @@ function handleStartSession(call, callback) {
 
   callback(null, {
     call_id: callId,
-    state: 'joining',
+    state: 'presenting',
     current_step: 0,
     prospect_name: prospect_name || '',
     started_at: Date.now(),
@@ -220,40 +263,149 @@ async function startHTTP() {
   const app = Fastify({ logger: true });
 
   app.post('/api/sessions', async (req) => {
-    const { zoom_meeting_id, zoom_meeting_password, prospect_name } = req.body;
+    const { zoom_meeting_id, zoom_meeting_password, prospect_name } = req.body || {};
     const callId = uuidv4();
     createSession(callId, prospect_name);
+
+    const actor = sessions.get(callId);
+    const snapshot = actor.getSnapshot();
+    const step = getStep(snapshot.context.currentStep);
+
     return {
       call_id: callId,
-      state: 'joining',
+      state: String(snapshot.value),
+      step: 0,
+      topic: step.topic,
+      section: step.browser_action.section,
       zoom_meeting_id,
     };
   });
 
   app.get('/api/sessions/:callId', async (req) => {
-    const info = await getSessionInfo(req.params.callId);
-    return { call_id: req.params.callId, ...info };
+    const { callId } = req.params;
+    const actor = sessions.get(callId);
+
+    if (actor) {
+      const snapshot = actor.getSnapshot();
+      const ctx = snapshot.context;
+      const step = getStep(ctx.currentStep);
+      return {
+        call_id: callId,
+        state: String(snapshot.value),
+        step: ctx.currentStep,
+        topic: step.topic,
+        section: step.browser_action.section,
+        prospect_name: ctx.prospectName,
+        steps_completed: ctx.stepsCompleted,
+      };
+    }
+
+    const info = await getSessionInfo(callId);
+    return { call_id: callId, ...info };
   });
 
   app.post('/api/sessions/:callId/advance', async (req) => {
-    const actor = sessions.get(req.params.callId);
+    const { callId } = req.params;
+    const actor = sessions.get(callId);
     if (!actor) return { error: 'No session found' };
+
+    const prevSnapshot = actor.getSnapshot();
+    if (prevSnapshot.value === 'ended' || prevSnapshot.status === 'done') {
+      return { call_id: callId, state: 'ended', message: 'Demo already completed' };
+    }
+
     actor.send({ type: 'ADVANCE' });
+
     const snapshot = actor.getSnapshot();
-    const step = getStep(snapshot.context.currentStep);
+    const ctx = snapshot.context;
+    const step = getStep(ctx.currentStep);
+
+    // Dispatch browser navigation for this step
+    const browserResult = await browserExecuteAction({
+      call_id: callId,
+      type: 0, // NAVIGATE enum
+      section: step.browser_action.section,
+    });
+
     return {
-      call_id: req.params.callId,
-      state: snapshot.value,
-      step: snapshot.context.currentStep,
+      call_id: callId,
+      state: String(snapshot.value),
+      step: ctx.currentStep,
       topic: step.topic,
+      section: step.browser_action.section,
+      script: step.script.replace('{{agent_name}}', process.env.AGENT_NAME || 'Alex'),
+      browser_result: browserResult,
     };
   });
 
+  app.post('/api/sessions/:callId/question', async (req) => {
+    const { callId } = req.params;
+    const { question } = req.body || {};
+
+    if (!question) return { error: 'Missing "question" in request body' };
+
+    const actor = sessions.get(callId);
+    if (!actor) return { error: 'No session found' };
+
+    const snapshot = actor.getSnapshot();
+    const ctx = snapshot.context;
+    const step = getStep(ctx.currentStep);
+    const history = await getHistory(callId, 5);
+
+    try {
+      const response = await claudeDecide({
+        call_id: callId,
+        current_step: ctx.currentStep,
+        step_description: `Step ${step.index}: ${step.topic} — ${step.script}`,
+        conversation_history: history.map((h) => ({ role: h.role, text: h.text })),
+        prospect_transcript: question,
+      });
+
+      const { action, response_text, reasoning } = response;
+
+      // Update state machine
+      if (action === 'ANSWER') {
+        actor.send({ type: 'ANSWER', question, answer: response_text });
+      } else if (action === 'ADVANCE') {
+        actor.send({ type: 'ADVANCE' });
+      } else if (action === 'CLOSE') {
+        actor.send({ type: 'CLOSE' });
+      }
+
+      // Record exchange
+      appendHistory(callId, { role: 'prospect', text: question, timestamp: Date.now() });
+      appendHistory(callId, { role: 'agent', text: response_text, timestamp: Date.now() });
+
+      const updatedSnapshot = actor.getSnapshot();
+      const updatedStep = getStep(updatedSnapshot.context.currentStep);
+
+      return {
+        call_id: callId,
+        action,
+        response_text,
+        reasoning,
+        state: String(updatedSnapshot.value),
+        step: updatedSnapshot.context.currentStep,
+        topic: updatedStep.topic,
+      };
+    } catch (err) {
+      logger.error({ err, callId }, 'Claude Q&A failed');
+      return {
+        call_id: callId,
+        error: 'Claude service not available',
+        message: err.message,
+        step: ctx.currentStep,
+        topic: step.topic,
+      };
+    }
+  });
+
   app.post('/api/sessions/:callId/end', async (req) => {
-    const actor = sessions.get(req.params.callId);
+    const { callId } = req.params;
+    const actor = sessions.get(callId);
     if (actor) {
       actor.send({ type: 'CLOSE' });
-      sessions.delete(req.params.callId);
+      sessions.delete(callId);
     }
     return { ok: true };
   });

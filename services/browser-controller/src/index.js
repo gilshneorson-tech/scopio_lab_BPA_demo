@@ -1,6 +1,8 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import { chromium } from 'playwright';
+import { createServer } from 'http';
+import { readFileSync } from 'fs';
 import pino from 'pino';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -8,6 +10,9 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROTO_DIR = resolve(__dirname, '../../../proto');
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+
+const TEST_PAGE_PORT = 8080;
+let BMA_URL = process.env.BMA_URL || '';
 
 // ─── Browser session ───
 
@@ -21,7 +26,6 @@ async function initBrowser() {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      // Use Xvfb display for screen share capture
       ...(process.env.DISPLAY ? [] : ['--headless']),
     ],
   });
@@ -35,53 +39,66 @@ async function initBrowser() {
   logger.info('Browser initialized');
 }
 
+// ─── Test page server ───
+
+function startTestPageServer() {
+  const htmlPath = resolve(__dirname, '../../../config/test-bma.html');
+  let html;
+  try {
+    html = readFileSync(htmlPath, 'utf-8');
+  } catch {
+    logger.error({ htmlPath }, 'test-bma.html not found');
+    return;
+  }
+
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(html);
+  });
+
+  server.listen(TEST_PAGE_PORT, () => {
+    logger.info(`Test BMA page served at http://localhost:${TEST_PAGE_PORT}`);
+  });
+}
+
 // ─── Section navigation map ───
-// Maps demo section names to BMA UI navigation actions.
-// These selectors are placeholders — update once BMA URL and DOM structure are known.
 
 const SECTION_MAP = {
   home: async () => {
-    await page.goto(process.env.BMA_URL || 'about:blank');
+    await page.goto(BMA_URL);
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
   },
   overview: async () => {
-    await page.click('[data-section="overview"], nav a[href*="overview"]').catch(() => {
-      logger.warn('Overview section selector not found, trying fallback');
-    });
+    const clicked = await page.click('[data-section="overview"], nav a[href*="overview"]').then(() => true).catch(() => false);
+    if (!clicked) await page.goto(`${BMA_URL}#overview`);
   },
   scan_viewer: async () => {
-    await page.click('[data-section="scan"], nav a[href*="scan"]').catch(() => {
-      logger.warn('Scan viewer selector not found');
-    });
+    const clicked = await page.click('[data-section="scan"], nav a[href*="scan"]').then(() => true).catch(() => false);
+    if (!clicked) await page.goto(`${BMA_URL}#scan`);
   },
   ndc_panel: async () => {
-    await page.click('[data-section="ndc"], nav a[href*="differential"]').catch(() => {
-      logger.warn('NDC panel selector not found');
-    });
+    const clicked = await page.click('[data-section="ndc"], nav a[href*="differential"]').then(() => true).catch(() => false);
+    if (!clicked) await page.goto(`${BMA_URL}#ndc`);
   },
   quantification: async () => {
-    await page.click('[data-section="quantification"], nav a[href*="quantif"]').catch(() => {
-      logger.warn('Quantification selector not found');
-    });
+    const clicked = await page.click('[data-section="quantification"], nav a[href*="quantif"]').then(() => true).catch(() => false);
+    if (!clicked) await page.goto(`${BMA_URL}#quantification`);
   },
   remote_access: async () => {
-    await page.click('[data-section="remote"], nav a[href*="remote"]').catch(() => {
-      logger.warn('Remote access selector not found');
-    });
+    const clicked = await page.click('[data-section="remote"], nav a[href*="remote"]').then(() => true).catch(() => false);
+    if (!clicked) await page.goto(`${BMA_URL}#remote`);
   },
   report_export: async () => {
-    await page.click('[data-section="report"], nav a[href*="report"]').catch(() => {
-      logger.warn('Report export selector not found');
-    });
+    const clicked = await page.click('[data-section="report"], nav a[href*="report"]').then(() => true).catch(() => false);
+    if (!clicked) await page.goto(`${BMA_URL}#report`);
   },
   integration: async () => {
-    await page.click('[data-section="integration"], nav a[href*="integrat"]').catch(() => {
-      logger.warn('Integration selector not found');
-    });
+    const clicked = await page.click('[data-section="integration"], nav a[href*="integrat"]').then(() => true).catch(() => false);
+    if (!clicked) await page.goto(`${BMA_URL}#integration`);
   },
   summary: async () => {
-    await page.click('[data-section="summary"], nav a[href*="summary"]').catch(() => {
-      logger.warn('Summary selector not found');
-    });
+    const clicked = await page.click('[data-section="summary"], nav a[href*="summary"]').then(() => true).catch(() => false);
+    if (!clicked) await page.goto(`${BMA_URL}#summary`);
   },
 };
 
@@ -95,7 +112,7 @@ async function executeAction(action) {
       const navFn = SECTION_MAP[action.section];
       if (navFn) {
         await navFn();
-        await page.waitForLoadState('networkidle').catch(() => {});
+        await page.waitForTimeout(300); // let JS settle
       } else {
         logger.warn({ section: action.section }, 'Unknown section');
       }
@@ -181,14 +198,16 @@ async function handleExecuteAction(call, callback) {
 async function handleInitialize(call, callback) {
   try {
     const { url, username, password } = call.request;
-    await initBrowser();
 
-    if (url) {
-      await page.goto(url);
+    if (!browser) {
+      await initBrowser();
+    }
 
-      // Attempt login if credentials provided
+    const targetUrl = url || BMA_URL;
+    if (targetUrl) {
+      await page.goto(targetUrl);
+
       if (username && password) {
-        // Generic login attempt — update selectors for actual BMA login page
         await page.fill('input[type="text"], input[name="username"], #username', username).catch(() => {});
         await page.fill('input[type="password"], #password', password).catch(() => {});
         await page.click('button[type="submit"], input[type="submit"]').catch(() => {});
@@ -223,6 +242,13 @@ async function handleGetPageState(call, callback) {
 // ─── Main ───
 
 async function main() {
+  // If no BMA_URL, serve the test page locally
+  if (!process.env.BMA_URL) {
+    startTestPageServer();
+    BMA_URL = `http://localhost:${TEST_PAGE_PORT}`;
+    logger.info({ BMA_URL }, 'Using test BMA page (no BMA_URL set)');
+  }
+
   const proto = loadBrowserProto();
   const server = new grpc.Server();
 
@@ -239,12 +265,10 @@ async function main() {
     logger.info(`Browser controller gRPC listening on :${port}`);
   });
 
-  // Pre-init browser if BMA_URL is set
-  if (process.env.BMA_URL) {
-    await initBrowser();
-    await page.goto(process.env.BMA_URL);
-    logger.info({ url: process.env.BMA_URL }, 'Browser pre-loaded BMA');
-  }
+  // Pre-init browser and navigate to BMA
+  await initBrowser();
+  await page.goto(BMA_URL);
+  logger.info({ url: BMA_URL }, 'Browser pre-loaded BMA');
 }
 
 main().catch((err) => {
