@@ -10,6 +10,10 @@ build/
 venv/
 env/
 
+# Node
+node_modules/
+*.tgz
+
 # OS
 .DS_Store
 Thumbs.db
@@ -23,3 +27,16 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Generated
+services/*/src/generated/
+proto/generated/
+
+# Logs
+*.log
+logs/
+
+# Secrets
+*.pem
+*.key
+service-account.json

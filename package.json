@@ -1,0 +1,22 @@
+{
+  "name": "scopio-lab-bpa-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonomous Zoom demo agent for ScopioLabs BMA product",
+  "workspaces": [
+    "services/orchestrator",
+    "services/zoom-bot",
+    "services/browser-controller",
+    "services/tts-service",
+    "services/claude-wrapper",
+    "services/persistence"
+  ],
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:detach": "docker compose up --build -d",
+    "down": "docker compose down",
+    "proto:generate": "bash scripts/generate-proto.sh",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}

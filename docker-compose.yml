@@ -1,0 +1,123 @@
+version: "3.9"
+
+services:
+  # ─── Infrastructure ───
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 3
+
+  xvfb:
+    image: ubuntu:22.04
+    command: >
+      bash -c "apt-get update && apt-get install -y xvfb &&
+      Xvfb :99 -screen 0 1920x1080x24 -ac"
+    environment:
+      - DISPLAY=:99
+
+  pulseaudio:
+    image: ubuntu:22.04
+    command: >
+      bash -c "apt-get update && apt-get install -y pulseaudio &&
+      pulseaudio --system --disallow-exit --disallow-module-loading"
+
+  # ─── Application Services ───
+  orchestrator:
+    build:
+      context: .
+      dockerfile: services/orchestrator/Dockerfile
+    ports:
+      - "3000:3000"   # HTTP API
+      - "50051:50051"  # gRPC
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CLAUDE_GRPC_ADDR=claude-wrapper:50052
+      - BROWSER_GRPC_ADDR=browser-controller:50053
+      - TTS_GRPC_ADDR=tts-service:50054
+      - PERSISTENCE_GRPC_ADDR=persistence:50055
+      - HTTP_PORT=3000
+      - GRPC_PORT=50051
+      - LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  zoom-bot:
+    build:
+      context: .
+      dockerfile: services/zoom-bot/Dockerfile
+    environment:
+      - ZOOM_SDK_KEY=${ZOOM_SDK_KEY}
+      - ZOOM_SDK_SECRET=${ZOOM_SDK_SECRET}
+      - ZOOM_MEETING_ID=${ZOOM_MEETING_ID}
+      - ZOOM_MEETING_PASSWORD=${ZOOM_MEETING_PASSWORD}
+      - ORCHESTRATOR_GRPC_ADDR=orchestrator:50051
+      - STT_GRPC_ADDR=stt-service:50056
+      - DISPLAY=:99
+    depends_on:
+      - orchestrator
+      - stt-service
+      - xvfb
+      - pulseaudio
+
+  browser-controller:
+    build:
+      context: .
+      dockerfile: services/browser-controller/Dockerfile
+    environment:
+      - GRPC_PORT=50053
+      - BMA_URL=${BMA_URL}
+      - BMA_USERNAME=${BMA_USERNAME}
+      - BMA_PASSWORD=${BMA_PASSWORD}
+      - DISPLAY=:99
+      - LOG_LEVEL=info
+    depends_on:
+      - xvfb
+
+  stt-service:
+    build:
+      context: .
+      dockerfile: services/stt-service/Dockerfile
+    environment:
+      - GRPC_PORT=50056
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - STT_LANGUAGE=en-US
+      - STT_MODEL=nova-2
+      - LOG_LEVEL=INFO
+
+  tts-service:
+    build:
+      context: .
+      dockerfile: services/tts-service/Dockerfile
+    environment:
+      - GRPC_PORT=50054
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
+      - TTS_MODEL=eleven_turbo_v2
+      - LOG_LEVEL=info
+
+  claude-wrapper:
+    build:
+      context: .
+      dockerfile: services/claude-wrapper/Dockerfile
+    environment:
+      - GRPC_PORT=50052
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AGENT_NAME=${AGENT_NAME:-Alex}
+      - LOG_LEVEL=info
+
+  persistence:
+    build:
+      context: .
+      dockerfile: services/persistence/Dockerfile
+    environment:
+      - GRPC_PORT=50055
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
+      - LOG_LEVEL=info
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/secrets/service-account.json:ro

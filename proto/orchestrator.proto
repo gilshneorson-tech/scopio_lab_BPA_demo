@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package scopio.orchestrator;
+
+service Orchestrator {
+  // Called by zoom-bot when prospect audio is transcribed
+  rpc OnTranscription(TranscriptionEvent) returns (OrchestratorAction);
+
+  // Called by zoom-bot on participant events
+  rpc OnParticipantEvent(ParticipantEvent) returns (Ack);
+
+  // Called externally to start a demo session
+  rpc StartSession(StartSessionRequest) returns (SessionInfo);
+
+  // Called externally to get session status
+  rpc GetSessionStatus(SessionId) returns (SessionInfo);
+
+  // Called externally to end a session
+  rpc EndSession(SessionId) returns (Ack);
+}
+
+message TranscriptionEvent {
+  string call_id = 1;
+  string text = 2;
+  bool is_final = 3;
+  double confidence = 4;
+  int64 timestamp_ms = 5;
+}
+
+message ParticipantEvent {
+  string call_id = 1;
+  string participant_name = 2;
+  ParticipantAction action = 3;
+}
+
+enum ParticipantAction {
+  JOINED = 0;
+  LEFT = 1;
+  MUTED = 2;
+  UNMUTED = 3;
+}
+
+message OrchestratorAction {
+  string call_id = 1;
+  ActionType type = 2;
+  string response_text = 3;          // Text for TTS
+  BrowserCommand browser_command = 4; // Screen action to execute
+  int32 demo_step = 5;               // Current demo step index
+}
+
+enum ActionType {
+  ADVANCE = 0;
+  ANSWER = 1;
+  REPEAT = 2;
+  CLOSE = 3;
+  WAIT = 4;
+}
+
+message BrowserCommand {
+  string action_type = 1;  // NAVIGATE, HIGHLIGHT, SCROLL, CLICK, WAIT, SCREENSHOT
+  string selector = 2;
+  string section = 3;
+  string direction = 4;
+  int32 amount = 5;
+  int32 wait_ms = 6;
+}
+
+message StartSessionRequest {
+  string zoom_meeting_id = 1;
+  string zoom_meeting_password = 2;
+  string prospect_name = 3;
+}
+
+message SessionId {
+  string call_id = 1;
+}
+
+message SessionInfo {
+  string call_id = 1;
+  string state = 2;
+  int32 current_step = 3;
+  string prospect_name = 4;
+  int64 started_at = 5;
+  int32 steps_completed = 6;
+}
+
+message Ack {
+  bool ok = 1;
+  string message = 2;
+}

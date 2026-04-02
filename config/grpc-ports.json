@@ -1,0 +1,8 @@
+{
+  "orchestrator": { "grpc": 50051, "http": 3000 },
+  "claude-wrapper": { "grpc": 50052 },
+  "browser-controller": { "grpc": 50053 },
+  "tts-service": { "grpc": 50054 },
+  "persistence": { "grpc": 50055 },
+  "stt-service": { "grpc": 50056 }
+}

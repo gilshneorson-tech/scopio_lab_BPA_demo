@@ -1,0 +1,4 @@
+deepgram-sdk>=3.7.0
+grpcio>=1.66.0
+grpcio-tools>=1.66.0
+protobuf>=5.28.0

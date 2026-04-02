@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package scopio.tts;
+
+service TTS {
+  // Send text, receive streaming audio chunks
+  rpc Synthesize(SynthesizeRequest) returns (stream AudioResponse);
+}
+
+message SynthesizeRequest {
+  string call_id = 1;
+  string text = 2;
+  string voice_id = 3;
+  string model = 4;
+}
+
+message AudioResponse {
+  string call_id = 1;
+  bytes audio_data = 2;
+  int32 sample_rate = 3;
+  string encoding = 4;
+  bool is_final = 5;
+}

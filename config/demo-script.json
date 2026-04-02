@@ -1,0 +1,87 @@
+{
+  "demo_name": "ScopioLabs Full-Field BMA",
+  "total_duration_minutes": 10,
+  "agent_name": "Alex",
+  "steps": [
+    {
+      "id": "intro",
+      "index": 0,
+      "topic": "Intro + agenda",
+      "section": "home",
+      "time_range": "0:00–0:45",
+      "duration_sec": 45
+    },
+    {
+      "id": "bma_problem",
+      "index": 1,
+      "topic": "The BMA problem today",
+      "section": "overview",
+      "time_range": "0:45–1:30",
+      "duration_sec": 45
+    },
+    {
+      "id": "full_field_imaging",
+      "index": 2,
+      "topic": "Full-Field imaging at 100x",
+      "section": "scan_viewer",
+      "time_range": "1:30–3:00",
+      "duration_sec": 90
+    },
+    {
+      "id": "ai_differential",
+      "index": 3,
+      "topic": "AI differential count",
+      "section": "ndc_panel",
+      "time_range": "3:00–4:30",
+      "duration_sec": 90
+    },
+    {
+      "id": "quantification",
+      "index": 4,
+      "topic": "M:E ratio + megakaryocyte count",
+      "section": "quantification",
+      "time_range": "4:30–5:30",
+      "duration_sec": 60
+    },
+    {
+      "id": "remote_access",
+      "index": 5,
+      "topic": "Remote access + collaboration",
+      "section": "remote_access",
+      "time_range": "5:30–6:30",
+      "duration_sec": 60
+    },
+    {
+      "id": "digital_report",
+      "index": 6,
+      "topic": "Digital report generation",
+      "section": "report_export",
+      "time_range": "6:30–7:30",
+      "duration_sec": 60
+    },
+    {
+      "id": "lis_integration",
+      "index": 7,
+      "topic": "LIS / LIMS integration",
+      "section": "integration",
+      "time_range": "7:30–8:30",
+      "duration_sec": 60
+    },
+    {
+      "id": "qa_open",
+      "index": 8,
+      "topic": "Q&A open floor",
+      "section": "summary",
+      "time_range": "8:30–9:30",
+      "duration_sec": 60
+    },
+    {
+      "id": "closing",
+      "index": 9,
+      "topic": "Close + next steps",
+      "section": "home",
+      "time_range": "9:30–10:00",
+      "duration_sec": 30
+    }
+  ]
+}

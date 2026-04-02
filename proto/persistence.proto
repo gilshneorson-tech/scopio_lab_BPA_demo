@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package scopio.persistence;
+
+service Persistence {
+  // Save call record
+  rpc SaveCall(CallRecord) returns (Ack);
+
+  // Append a Q&A pair
+  rpc AppendQA(QAPair) returns (Ack);
+
+  // Append transcript entry
+  rpc AppendTranscript(TranscriptEntry) returns (Ack);
+
+  // Get call record
+  rpc GetCall(CallId) returns (CallRecord);
+
+  // Update call outcome
+  rpc UpdateOutcome(OutcomeUpdate) returns (Ack);
+}
+
+message CallRecord {
+  string call_id = 1;
+  string zoom_meeting_id = 2;
+  string prospect_name = 3;
+  int64 started_at = 4;
+  int64 ended_at = 5;
+  int32 steps_completed = 6;
+  string outcome = 7;  // completed, dropped, error
+  repeated TranscriptEntry transcript = 8;
+  repeated QAPair qa_pairs = 9;
+}
+
+message QAPair {
+  string call_id = 1;
+  string question = 2;
+  string answer = 3;
+  int32 demo_step = 4;
+  int64 timestamp_ms = 5;
+}
+
+message TranscriptEntry {
+  string call_id = 1;
+  string role = 2;
+  string text = 3;
+  int64 timestamp_ms = 4;
+}
+
+message CallId {
+  string call_id = 1;
+}
+
+message OutcomeUpdate {
+  string call_id = 1;
+  string outcome = 2;
+  int32 steps_completed = 3;
+}
+
+message Ack {
+  bool ok = 1;
+  string message = 2;
+}

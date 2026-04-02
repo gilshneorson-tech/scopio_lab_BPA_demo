@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package scopio.browser;
+
+service BrowserController {
+  // Execute a single browser action
+  rpc ExecuteAction(BrowserAction) returns (BrowserResult);
+
+  // Initialize browser and navigate to BMA
+  rpc Initialize(InitRequest) returns (BrowserResult);
+
+  // Take a screenshot of current state
+  rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
+
+  // Get current page info
+  rpc GetPageState(PageStateRequest) returns (PageState);
+}
+
+message BrowserAction {
+  string call_id = 1;
+  ActionType type = 2;
+  string selector = 3;
+  string section = 4;
+  string direction = 5;
+  int32 amount = 6;
+  int32 wait_ms = 7;
+}
+
+enum ActionType {
+  NAVIGATE = 0;
+  HIGHLIGHT = 1;
+  SCROLL = 2;
+  CLICK = 3;
+  WAIT = 4;
+  SCREENSHOT = 5;
+}
+
+message InitRequest {
+  string call_id = 1;
+  string url = 2;
+  string username = 3;
+  string password = 4;
+}
+
+message BrowserResult {
+  bool success = 1;
+  string message = 2;
+  string current_url = 3;
+}
+
+message ScreenshotRequest {
+  string call_id = 1;
+}
+
+message ScreenshotResponse {
+  bytes image_data = 1;
+  string content_type = 2;
+}
+
+message PageStateRequest {
+  string call_id = 1;
+}
+
+message PageState {
+  string url = 1;
+  string title = 2;
+  bool is_loaded = 3;
+}
