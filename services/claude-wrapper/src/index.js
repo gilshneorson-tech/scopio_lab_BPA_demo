@@ -12,7 +12,7 @@ const PROTO_DIR = resolve(__dirname, '../../../proto');
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 const AGENT_NAME = process.env.AGENT_NAME || 'Alex';
-const MODEL = 'claude-sonnet-4-6-20250514';
+const MODEL = 'claude-sonnet-4-20250514';
 
 const anthropic = new Anthropic();
 
