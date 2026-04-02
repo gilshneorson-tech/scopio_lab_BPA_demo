@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROTO_DIR = resolve(__dirname, '../../../proto');
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
-const TEST_PAGE_PORT = 8080;
+const TEST_PAGE_PORT = 8090;
 let BMA_URL = process.env.BMA_URL || '';
 
 // ─── Browser session ───
