@@ -4,6 +4,7 @@ import Fastify from 'fastify';
 import { createActor } from 'xstate';
 import { v4 as uuidv4 } from 'uuid';
 import pino from 'pino';
+import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -408,6 +409,19 @@ async function startHTTP() {
       sessions.delete(callId);
     }
     return { ok: true };
+  });
+
+  // ─── Dashboard + BMA page serving ───
+  const CONFIG_DIR = resolve(__dirname, '../../../config');
+
+  app.get('/', async (req, reply) => {
+    const html = readFileSync(resolve(CONFIG_DIR, 'dashboard.html'), 'utf-8');
+    reply.type('text/html').send(html);
+  });
+
+  app.get('/bma', async (req, reply) => {
+    const html = readFileSync(resolve(CONFIG_DIR, 'test-bma.html'), 'utf-8');
+    reply.type('text/html').send(html);
   });
 
   app.get('/health', async () => ({ status: 'ok', service: 'orchestrator' }));

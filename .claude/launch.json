@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "orchestrator",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["services/orchestrator/src/index.js"],
+      "port": 3000,
+      "env": {
+        "ANTHROPIC_API_KEY": ""
+      }
+    },
+    {
+      "name": "claude-wrapper",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["services/claude-wrapper/src/index.js"],
+      "port": 50052,
+      "env": {
+        "ANTHROPIC_API_KEY": ""
+      }
+    },
+    {
+      "name": "browser-controller",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["services/browser-controller/src/index.js"],
+      "port": 8090
+    }
+  ]
+}
