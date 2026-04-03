@@ -96,26 +96,23 @@ class STTServicer(stt_pb2_grpc.STTServicer):
         )
 
         def audio_generator():
-            """Convert gRPC request stream to Google STT request stream."""
+            """Convert gRPC request stream to Google STT audio requests."""
             nonlocal call_id
 
-            # First request must contain only the config
-            yield speech.StreamingRecognizeRequest(
-                streaming_config=streaming_config
-            )
-
-            # Subsequent requests contain audio data
             for chunk in request_iterator:
                 if not call_id:
                     call_id = chunk.call_id
                 if chunk.audio_data:
                     yield speech.StreamingRecognizeRequest(
-                        audio_content=chunk.audio_data
+                        audio_content=bytes(chunk.audio_data)
                     )
 
         try:
             t_start = time.time()
-            responses = client.streaming_recognize(requests=audio_generator())
+            responses = client.streaming_recognize(
+                config=streaming_config,
+                requests=audio_generator(),
+            )
 
             for response in responses:
                 if not response.results:

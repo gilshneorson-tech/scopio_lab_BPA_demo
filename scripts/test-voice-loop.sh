@@ -73,7 +73,7 @@ AUDIO_OUTPUT=file \
 ORCHESTRATOR_GRPC_ADDR=localhost:50051 \
 STT_GRPC_ADDR=localhost:50056 \
 TTS_GRPC_ADDR=localhost:50054 \
-timeout 30 node services/zoom-bot/src/index.js 2>&1 || true
+perl -e 'alarm 30; exec @ARGV' node services/zoom-bot/src/index.js 2>&1 || true
 
 echo ""
 
