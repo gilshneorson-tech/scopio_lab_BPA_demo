@@ -84,10 +84,12 @@ services:
       dockerfile: services/stt-service/Dockerfile
     environment:
       - GRPC_PORT=50056
-      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-scopio-lab-bpa-demo}
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
       - STT_LANGUAGE=en-US
-      - STT_MODEL=nova-2
       - LOG_LEVEL=INFO
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/secrets/service-account.json:ro
 
   tts-service:
     build:

@@ -126,6 +126,7 @@ function loadOrchestratorProto() {
 
 async function handleTranscription(call, callback) {
   const { call_id, text, is_final } = call.request;
+  const t_received = Date.now();
 
   if (!is_final || !text.trim()) {
     return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
@@ -142,6 +143,7 @@ async function handleTranscription(call, callback) {
   const history = await getHistory(call_id, 5);
 
   try {
+    const t_claude_start = Date.now();
     const response = await claudeDecide({
       call_id,
       current_step: ctx.currentStep,
@@ -149,8 +151,17 @@ async function handleTranscription(call, callback) {
       conversation_history: history,
       prospect_transcript: text,
     });
+    const t_claude_done = Date.now();
 
     const { action, response_text } = response;
+
+    logger.info({
+      call_id,
+      action,
+      claude_latency_ms: t_claude_done - t_claude_start,
+      total_orchestrator_ms: t_claude_done - t_received,
+      transcript: text.slice(0, 80),
+    }, 'Transcription handled');
 
     // Update state machine
     if (action === 'ADVANCE') {
