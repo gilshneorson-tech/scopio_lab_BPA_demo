@@ -40,3 +40,4 @@ logs/
 *.pem
 *.key
 service-account.json
+services/zoom-bot/sdk/
