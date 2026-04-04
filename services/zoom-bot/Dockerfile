@@ -1,7 +1,11 @@
 FROM node:20-slim
 
+# Install audio + display tools for Zoom SDK integration
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pulseaudio-utils \
+    pulseaudio \
+    xvfb \
+    ffmpeg \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,4 +18,10 @@ COPY services/zoom-bot/src/ ./services/zoom-bot/src/
 
 WORKDIR /app/services/zoom-bot
 
-CMD ["node", "src/index.js"]
+RUN mkdir -p /data/audio
+
+# Start PulseAudio + Xvfb, then the bot
+CMD bash -c "pulseaudio --start --system --disallow-exit 2>/dev/null; \
+    Xvfb :99 -screen 0 1920x1080x24 -ac &>/dev/null & \
+    export DISPLAY=:99; \
+    node src/index.js"

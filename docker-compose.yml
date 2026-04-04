@@ -10,20 +10,10 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 3
-
-  xvfb:
-    image: ubuntu:22.04
-    command: >
-      bash -c "apt-get update && apt-get install -y xvfb &&
-      Xvfb :99 -screen 0 1920x1080x24 -ac"
-    environment:
-      - DISPLAY=:99
-
-  pulseaudio:
-    image: ubuntu:22.04
-    command: >
-      bash -c "apt-get update && apt-get install -y pulseaudio &&
-      pulseaudio --system --disallow-exit --disallow-module-loading"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─── Application Services ───
   orchestrator:
@@ -31,8 +21,8 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     ports:
-      - "3000:3000"   # HTTP API
-      - "50051:50051"  # gRPC
+      - "3000:3000"
+      - "50051:50051"
     environment:
       - REDIS_URL=redis://redis:6379
       - CLAUDE_GRPC_ADDR=claude-wrapper:50052
@@ -41,28 +31,50 @@ services:
       - PERSISTENCE_GRPC_ADDR=persistence:50055
       - HTTP_PORT=3000
       - GRPC_PORT=50051
-      - LOG_LEVEL=info
+      - AGENT_NAME=${AGENT_NAME:-Alex}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health || exit 1"]
+      interval: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   zoom-bot:
     build:
       context: .
       dockerfile: services/zoom-bot/Dockerfile
     environment:
-      - ZOOM_SDK_KEY=${ZOOM_SDK_KEY}
-      - ZOOM_SDK_SECRET=${ZOOM_SDK_SECRET}
+      - ZOOM_ACCOUNT_ID=${ZOOM_ACCOUNT_ID}
+      - ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID}
+      - ZOOM_CLIENT_SECRET=${ZOOM_CLIENT_SECRET}
       - ZOOM_MEETING_ID=${ZOOM_MEETING_ID}
       - ZOOM_MEETING_PASSWORD=${ZOOM_MEETING_PASSWORD}
       - ORCHESTRATOR_GRPC_ADDR=orchestrator:50051
       - STT_GRPC_ADDR=stt-service:50056
+      - TTS_GRPC_ADDR=tts-service:50054
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
+      - AUDIO_INPUT_FILE=${AUDIO_INPUT_FILE}
+      - AUDIO_OUTPUT_DIR=/data/audio
+      - AUDIO_OUTPUT=${AUDIO_OUTPUT:-file}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
       - DISPLAY=:99
+    volumes:
+      - audio-data:/data/audio
     depends_on:
       - orchestrator
       - stt-service
-      - xvfb
-      - pulseaudio
+      - tts-service
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   browser-controller:
     build:
@@ -73,10 +85,15 @@ services:
       - BMA_URL=${BMA_URL}
       - BMA_USERNAME=${BMA_USERNAME}
       - BMA_PASSWORD=${BMA_PASSWORD}
-      - DISPLAY=:99
-      - LOG_LEVEL=info
-    depends_on:
-      - xvfb
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('net').connect(50053).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 3G
 
   stt-service:
     build:
@@ -85,11 +102,16 @@ services:
     environment:
       - GRPC_PORT=50056
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-scopio-lab-bpa-demo}
-      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
-      - STT_LANGUAGE=en-US
-      - LOG_LEVEL=INFO
-    volumes:
-      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/secrets/service-account.json:ro
+      - STT_LANGUAGE=${STT_LANGUAGE:-en-US}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import grpc; ch=grpc.insecure_channel('localhost:50056'); grpc.channel_ready_future(ch).result(timeout=2)\""]
+      interval: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   tts-service:
     build:
@@ -99,8 +121,16 @@ services:
       - GRPC_PORT=50054
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
-      - TTS_MODEL=eleven_turbo_v2
-      - LOG_LEVEL=info
+      - TTS_MODEL=${TTS_MODEL:-eleven_turbo_v2}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('net').connect(50054).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   claude-wrapper:
     build:
@@ -110,7 +140,15 @@ services:
       - GRPC_PORT=50052
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - AGENT_NAME=${AGENT_NAME:-Alex}
-      - LOG_LEVEL=info
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('net').connect(50052).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   persistence:
     build:
@@ -118,8 +156,16 @@ services:
       dockerfile: services/persistence/Dockerfile
     environment:
       - GRPC_PORT=50055
-      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
-      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
-      - LOG_LEVEL=info
-    volumes:
-      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/secrets/service-account.json:ro
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-scopio-lab-bpa-demo}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('net').connect(50055).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  audio-data:
