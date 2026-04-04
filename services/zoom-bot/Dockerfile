@@ -6,7 +6,7 @@ WORKDIR /opt/zoom-sdk
 
 # Install C++ build dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential cmake git curl ca-certificates \
+    build-essential cmake git curl ca-certificates zip unzip tar ninja-build pkg-config \
     libssl-dev libx11-dev libglib2.0-dev libopencv-dev \
     libdbus-1-3 libgbm1 libgl1 libx11-xcb1 \
     libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
