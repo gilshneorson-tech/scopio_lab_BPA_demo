@@ -30,7 +30,10 @@ GCP_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "scopio-lab-bpa-demo")
 
 # ─── Proto generation at startup ───
 
-PROTO_DIR = Path(__file__).resolve().parent.parent.parent.parent / "proto"
+# Try local dev path first, then Docker container path
+_dev_proto = Path(__file__).resolve().parent.parent.parent.parent / "proto"
+_docker_proto = Path("/app/proto")
+PROTO_DIR = _dev_proto if _dev_proto.exists() else _docker_proto
 GENERATED_DIR = Path(__file__).resolve().parent / "generated"
 
 
