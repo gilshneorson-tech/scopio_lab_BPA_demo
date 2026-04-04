@@ -36,17 +36,22 @@ FROM node:20-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies for SDK + audio
+# Use || true for packages that may differ between Debian/Ubuntu versions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio pulseaudio-utils dbus \
     xvfb xauth \
     ffmpeg curl \
-    libasound2t64 alsa-utils \
-    libdbus-1-3 libgbm1 libgl1 libglib2.0-0 \
+    libdbus-1-3 libgbm1 libglib2.0-0 \
     libx11-6 libx11-xcb1 libxcb-image0 libxcb-keysyms1 \
     libxcb-randr0 libxcb-shape0 libxcb-shm0 libxcb-xfixes0 \
-    libxcb-xtest0 libgl1-mesa-dri libxfixes3 \
-    libopencv-core406t64 libopencv-imgproc406t64 \
-    libssl3t64 \
+    libxcb-xtest0 libxfixes3 \
+    libssl3 \
+    && apt-get install -y --no-install-recommends libasound2 libgl1 libgl1-mesa-dri 2>/dev/null \
+    || apt-get install -y --no-install-recommends libasound2t64 libgl1-mesa-glx 2>/dev/null \
+    || true \
+    && apt-get install -y --no-install-recommends libopencv-core4.5d libopencv-imgproc4.5d 2>/dev/null \
+    || apt-get install -y --no-install-recommends libopencv-core406t64 libopencv-imgproc406t64 2>/dev/null \
+    || true \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built SDK binary + shared libraries
