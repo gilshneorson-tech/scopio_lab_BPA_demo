@@ -485,19 +485,22 @@ file="meeting-audio.pcm"
 
           // Write TTS audio to the file the C++ virtual mic watches
           // The SDK's ZoomSDKAudioSource reads this and sends via pSender->send()
-          try {
-            const ttsFile = '/tmp/zoom-audio/tts-output.pcm';
-            ensureDir('/tmp/zoom-audio');
-            writeFileSync(ttsFile, combined);
-            logger.info({ bytes: combined.length, ttsFile }, 'TTS audio written for SDK virtual mic');
+          const ttsFile = '/tmp/zoom-audio/tts-output.pcm';
+          ensureDir('/tmp/zoom-audio');
+          writeFileSync(ttsFile, combined);
+          logger.info({ bytes: combined.length, ttsFile }, 'TTS audio written for SDK virtual mic');
 
-            // Wait for approximate playback duration (audio length / sample rate)
-            const durationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
-            await new Promise(r => setTimeout(r, durationMs + 500));
+          // Wait for approximate playback duration before marking not-speaking
+          const durationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
+          const latency = tracker.report();
+          logger.info({ callId: this.callId, latency }, 'Voice loop complete');
+
+          setTimeout(() => {
             logger.info('TTS playback complete');
-          } catch (err) {
-            logger.error({ err: err.message }, 'TTS write failed');
-          }
+            this.isSpeaking = false;
+            resolveSpeak();
+          }, durationMs + 500);
+          return;
         }
 
         const latency = tracker.report();
