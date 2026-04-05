@@ -1,6 +1,7 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, watchFile, unwatchFile } from 'fs';
+import { createConnection } from 'net';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { execSync, spawn } from 'child_process';
 import pino from 'pino';
 import { resolve, dirname } from 'path';
@@ -267,7 +268,9 @@ class ZoomSDKBot {
   constructor(callId) {
     this.callId = callId;
     this.process = null;
-    this.audioWatcher = null;
+    this.socketClient = null;
+    this.sttStream = null;
+    this.isSpeaking = false; // true when TTS is playing, suppress STT
   }
 
   async start(meetingId, password) {
@@ -279,8 +282,9 @@ class ZoomSDKBot {
     }
 
     ensureDir(SDK_AUDIO_DIR);
+    ensureDir(resolve(process.cwd(), 'out'));
 
-    // Write SDK config file
+    // Write SDK config — use transcribe mode for socket streaming
     const configPath = '/tmp/zoom-config.toml';
     const joinUrl = `https://zoom.us/j/${meetingId}${password ? `?pwd=${password}` : ''}`;
     const config = `client-id="${process.env.ZOOM_CLIENT_ID || ''}"
@@ -293,15 +297,12 @@ file="meeting-audio.pcm"
 `;
     writeFileSync(configPath, config);
 
-    // Ensure out/ directory exists for SDK audio output
-    ensureDir(resolve(process.cwd(), 'out'));
-
     logger.info({ meetingId, joinUrl, callId: this.callId }, 'Starting Zoom SDK bot');
 
-    // Spawn the C++ SDK process
+    // Spawn the C++ SDK process with transcribe flag for socket mode
     this.process = spawn(sdkBinary, [
       '--config', configPath,
-      'RawAudio',
+      'RawAudio', '--transcribe',
     ], {
       env: {
         ...process.env,
@@ -313,31 +314,219 @@ file="meeting-audio.pcm"
     });
 
     this.process.stdout.on('data', (data) => {
-      logger.info({ sdk: data.toString().trim() }, 'SDK stdout');
+      const msg = data.toString().trim();
+      logger.info({ sdk: msg }, 'SDK stdout');
+
+      // Once connected and recording, connect to the audio socket
+      if (msg.includes('subscribe to raw audio') || msg.includes('start raw recording')) {
+        setTimeout(() => this.connectAudioSocket(), 1000);
+      }
     });
 
     this.process.stderr.on('data', (data) => {
-      logger.info({ sdk: data.toString().trim() }, 'SDK stderr');
+      const msg = data.toString().trim();
+      // Only log non-ALSA errors to reduce noise
+      if (!msg.includes('ALSA lib')) {
+        logger.info({ sdk: msg }, 'SDK stderr');
+      }
     });
 
     this.process.on('exit', (code, signal) => {
       logger.info({ code, signal, callId: this.callId }, 'Zoom SDK process exited');
     });
 
-    // Watch for audio output from SDK
-    this.startAudioWatcher();
+    // Also start file-based watcher as fallback (socket may not be available)
+    this.startFileWatcher();
 
     return true;
   }
 
-  startAudioWatcher() {
-    // SDK writes to out/ relative to the Node.js cwd (where the process was spawned)
+  connectAudioSocket() {
+    const SOCKET_PATH = '/tmp/meeting.sock';
+
+    if (!existsSync(SOCKET_PATH)) {
+      logger.warn('Socket not found yet, retrying in 2s...');
+      setTimeout(() => this.connectAudioSocket(), 2000);
+      return;
+    }
+
+    logger.info({ path: SOCKET_PATH }, 'Connecting to SDK audio socket');
+
+    this.socketClient = createConnection(SOCKET_PATH);
+    let audioBuffer = Buffer.alloc(0);
+
+    this.socketClient.on('connect', () => {
+      logger.info('Connected to SDK audio socket — streaming to STT');
+      this.openSTTStream();
+    });
+
+    this.socketClient.on('data', (data) => {
+      if (this.isSpeaking) return; // Don't transcribe our own TTS output
+
+      audioBuffer = Buffer.concat([audioBuffer, data]);
+
+      // Send complete chunks to STT
+      while (audioBuffer.length >= CHUNK_SIZE) {
+        const chunk = audioBuffer.slice(0, CHUNK_SIZE);
+        audioBuffer = audioBuffer.slice(CHUNK_SIZE);
+
+        if (this.sttStream) {
+          this.sttStream.write({
+            call_id: this.callId,
+            audio_data: chunk,
+            sample_rate: 16000,
+            encoding: 'LINEAR16',
+          });
+        }
+      }
+    });
+
+    this.socketClient.on('error', (err) => {
+      logger.warn({ err: err.message }, 'Audio socket error, falling back to file watcher');
+    });
+
+    this.socketClient.on('close', () => {
+      logger.info('Audio socket closed');
+    });
+  }
+
+  openSTTStream() {
+    if (this.sttStream) return;
+
+    this.sttStream = sttClient.streamAudio();
+
+    this.sttStream.on('data', (transcription) => {
+      if (!transcription.is_final || !transcription.text.trim()) return;
+      if (this.isSpeaking) return; // Ignore transcriptions while we're speaking
+
+      const text = transcription.text;
+      logger.info({ callId: this.callId, text, confidence: transcription.confidence }, 'Zoom STT transcription');
+
+      // Forward to orchestrator
+      const t_start = Date.now();
+      orchestratorClient.onTranscription(
+        {
+          call_id: this.callId,
+          text,
+          is_final: true,
+          confidence: transcription.confidence,
+          timestamp_ms: Date.now(),
+        },
+        async (err, action) => {
+          if (err) {
+            logger.error({ err }, 'Orchestrator error');
+            return;
+          }
+
+          const claude_ms = Date.now() - t_start;
+          logger.info(
+            { callId: this.callId, action: action.type, claude_ms },
+            'Orchestrator decision',
+          );
+
+          if (action.response_text) {
+            await this.speakResponse(action.response_text);
+          }
+        },
+      );
+    });
+
+    this.sttStream.on('error', (err) => {
+      logger.error({ err: err.message }, 'STT stream error — reopening');
+      this.sttStream = null;
+      // Reopen after a short delay
+      setTimeout(() => this.openSTTStream(), 1000);
+    });
+
+    this.sttStream.on('end', () => {
+      logger.info('STT stream ended — reopening');
+      this.sttStream = null;
+      setTimeout(() => this.openSTTStream(), 1000);
+    });
+  }
+
+  async speakResponse(text) {
+    this.isSpeaking = true;
+    const tracker = new LatencyTracker(this.callId);
+    tracker.mark('claude_done');
+
+    logger.info({ callId: this.callId, textLength: text.length }, 'Synthesizing TTS for Zoom');
+
+    const audioChunks = [];
+    let firstChunkReceived = false;
+
+    await new Promise((resolveSpeak) => {
+      const stream = ttsClient.synthesize({
+        call_id: this.callId,
+        text,
+        voice_id: process.env.ELEVENLABS_VOICE_ID || 'XrExE9yKIg1WjnnlVkGX',
+        model: process.env.TTS_MODEL || 'eleven_turbo_v2',
+      });
+
+      stream.on('data', (response) => {
+        if (response.audio_data && response.audio_data.length > 0) {
+          if (!firstChunkReceived) {
+            tracker.mark('tts_first_chunk');
+            firstChunkReceived = true;
+          }
+          audioChunks.push(Buffer.from(response.audio_data));
+        }
+      });
+
+      stream.on('end', () => {
+        tracker.mark('tts_done');
+
+        if (audioChunks.length > 0) {
+          // Save audio file
+          const combined = Buffer.concat(audioChunks);
+          const pcmFile = `${AUDIO_OUTPUT_DIR}/${this.callId}_response_${Date.now()}.pcm`;
+          ensureDir(AUDIO_OUTPUT_DIR);
+          writeFileSync(pcmFile, combined);
+
+          // Play into Zoom via PulseAudio
+          try {
+            logger.info({ bytes: combined.length, pcmFile }, 'Playing TTS into Zoom via PulseAudio');
+            execSync(
+              `paplay --raw --rate=16000 --channels=1 --format=s16le "${pcmFile}"`,
+              { stdio: 'pipe', timeout: 30000 },
+            );
+            logger.info('TTS playback complete');
+          } catch (err) {
+            logger.error({ err: err.message }, 'PulseAudio playback failed');
+          }
+        }
+
+        const latency = tracker.report();
+        logger.info({ callId: this.callId, latency }, 'Voice loop complete');
+
+        this.isSpeaking = false;
+        resolveSpeak();
+      });
+
+      stream.on('error', (err) => {
+        logger.error({ err, callId: this.callId }, 'TTS stream error');
+        this.isSpeaking = false;
+        resolveSpeak();
+      });
+    });
+  }
+
+  startFileWatcher() {
+    // Fallback: poll the audio file if socket mode isn't available
     const audioFile = resolve(process.cwd(), 'out/meeting-audio.pcm');
     let lastSize = 0;
-    let sttStream = null;
+    let socketConnected = false;
 
-    // Poll for new audio data every 200ms
-    this.audioWatcher = setInterval(() => {
+    this.fileWatcher = setInterval(() => {
+      // Stop file watching if socket is connected
+      if (this.socketClient && this.socketClient.readyState === 'open') {
+        if (!socketConnected) {
+          socketConnected = true;
+          logger.info('Socket connected — disabling file watcher');
+        }
+        return;
+      }
+
       if (!existsSync(audioFile)) return;
 
       try {
@@ -346,76 +535,29 @@ file="meeting-audio.pcm"
           const newData = buffer.slice(lastSize);
           lastSize = buffer.length;
 
-          // Open STT stream if not already
-          if (!sttStream) {
-            sttStream = sttClient.streamAudio();
+          if (!this.sttStream) this.openSTTStream();
 
-            sttStream.on('data', (transcription) => {
-              if (!transcription.is_final || !transcription.text.trim()) return;
-
-              logger.info(
-                { callId: this.callId, text: transcription.text },
-                'Zoom STT transcription',
-              );
-
-              // Forward to orchestrator
-              orchestratorClient.onTranscription(
-                {
-                  call_id: this.callId,
-                  text: transcription.text,
-                  is_final: true,
-                  confidence: transcription.confidence,
-                  timestamp_ms: Date.now(),
-                },
-                async (err, action) => {
-                  if (err) {
-                    logger.error({ err }, 'Orchestrator error');
-                    return;
-                  }
-
-                  if (action.response_text) {
-                    logger.info(
-                      { callId: this.callId, action: action.type },
-                      'Generating TTS for Zoom',
-                    );
-                    const tracker = new LatencyTracker(this.callId);
-                    tracker.mark('claude_done');
-                    await synthesizeAndPlay(this.callId, action.response_text, tracker);
-                  }
-                },
-              );
-            });
-
-            sttStream.on('error', (err) => {
-              logger.error({ err }, 'Zoom STT stream error');
-              sttStream = null;
-            });
-          }
-
-          // Send new audio to STT
           for (let i = 0; i < newData.length; i += CHUNK_SIZE) {
             const chunk = newData.slice(i, Math.min(i + CHUNK_SIZE, newData.length));
-            sttStream.write({
-              call_id: this.callId,
-              audio_data: chunk,
-              sample_rate: 16000,
-              encoding: 'LINEAR16',
-            });
+            if (this.sttStream) {
+              this.sttStream.write({
+                call_id: this.callId,
+                audio_data: chunk,
+                sample_rate: 16000,
+                encoding: 'LINEAR16',
+              });
+            }
           }
         }
-      } catch (err) {
-        // File might be locked by SDK, ignore
-      }
+      } catch { /* file locked by SDK */ }
     }, 200);
   }
 
   stop() {
-    if (this.audioWatcher) {
-      clearInterval(this.audioWatcher);
-    }
-    if (this.process) {
-      this.process.kill('SIGTERM');
-    }
+    if (this.fileWatcher) clearInterval(this.fileWatcher);
+    if (this.socketClient) this.socketClient.destroy();
+    if (this.sttStream) this.sttStream.end();
+    if (this.process) this.process.kill('SIGTERM');
     logger.info({ callId: this.callId }, 'Zoom SDK bot stopped');
   }
 }
