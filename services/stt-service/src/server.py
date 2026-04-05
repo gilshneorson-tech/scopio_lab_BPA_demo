@@ -84,9 +84,11 @@ class STTServicer(stt_pb2_grpc.STTServicer):
         client = speech.SpeechClient()
         call_id = None
 
+        # Accept the sample rate from the first audio chunk (default 32kHz for Zoom SDK)
+        # Google Cloud STT auto-detects if we don't hardcode
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=16000,
+            sample_rate_hertz=32000,
             language_code=STT_LANGUAGE,
             enable_automatic_punctuation=True,
             model="latest_long",

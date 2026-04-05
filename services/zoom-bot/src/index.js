@@ -18,7 +18,8 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const AUDIO_INPUT_FILE = process.env.AUDIO_INPUT_FILE || '';
 const AUDIO_OUTPUT_DIR = process.env.AUDIO_OUTPUT_DIR || '/tmp/scopio_audio';
 const AUDIO_OUTPUT_MODE = process.env.AUDIO_OUTPUT || 'file';
-const CHUNK_SIZE = 3200; // 100ms of 16kHz 16-bit mono PCM
+const CHUNK_SIZE_16K = 3200; // 100ms of 16kHz 16-bit mono PCM (for test audio files)
+const CHUNK_SIZE_32K = 6400; // 100ms of 32kHz 16-bit mono PCM (Zoom SDK output)
 const CHUNK_INTERVAL_MS = 100;
 
 // Zoom SDK paths
@@ -242,7 +243,7 @@ function runVoiceLoop(callId, audioBuffer) {
         setTimeout(() => sttStream.end(), 500);
         return;
       }
-      const end = Math.min(offset + CHUNK_SIZE, audioBuffer.length);
+      const end = Math.min(offset + CHUNK_SIZE_16K, audioBuffer.length);
       sttStream.write({
         call_id: callId,
         audio_data: audioBuffer.slice(offset, end),
@@ -366,15 +367,15 @@ file="meeting-audio.pcm"
       audioBuffer = Buffer.concat([audioBuffer, data]);
 
       // Send complete chunks to STT
-      while (audioBuffer.length >= CHUNK_SIZE) {
-        const chunk = audioBuffer.slice(0, CHUNK_SIZE);
-        audioBuffer = audioBuffer.slice(CHUNK_SIZE);
+      while (audioBuffer.length >= CHUNK_SIZE_32K) {
+        const chunk = audioBuffer.slice(0, CHUNK_SIZE_32K);
+        audioBuffer = audioBuffer.slice(CHUNK_SIZE_32K);
 
         if (this.sttStream) {
           this.sttStream.write({
             call_id: this.callId,
             audio_data: chunk,
-            sample_rate: 16000,
+            sample_rate: 32000,
             encoding: 'LINEAR16',
           });
         }
@@ -535,13 +536,13 @@ file="meeting-audio.pcm"
 
           if (!this.sttStream) this.openSTTStream();
 
-          for (let i = 0; i < newData.length; i += CHUNK_SIZE) {
-            const chunk = newData.slice(i, Math.min(i + CHUNK_SIZE, newData.length));
+          for (let i = 0; i < newData.length; i += CHUNK_SIZE_32K) {
+            const chunk = newData.slice(i, Math.min(i + CHUNK_SIZE_32K, newData.length));
             if (this.sttStream) {
               this.sttStream.write({
                 call_id: this.callId,
                 audio_data: chunk,
-                sample_rate: 16000,
+                sample_rate: 32000,
                 encoding: 'LINEAR16',
               });
             }
