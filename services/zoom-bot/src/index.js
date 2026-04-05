@@ -44,6 +44,7 @@ function loadProto(filename) {
 const orchestratorProto = loadProto('orchestrator.proto');
 const sttProto = loadProto('stt.proto');
 const ttsProto = loadProto('tts.proto');
+const browserProto = loadProto('browser.proto');
 
 const orchestratorClient = new orchestratorProto.scopio.orchestrator.Orchestrator(
   process.env.ORCHESTRATOR_GRPC_ADDR || 'localhost:50051',
@@ -342,6 +343,40 @@ class DemoBrowser {
 }
 
 let demoBrowser = null;
+let demoBrowserGrpcServer = null;
+
+function startDemoBrowserGrpc(port = 50057) {
+  const server = new grpc.Server();
+  server.addService(browserProto.scopio.browser.DemoBrowser.service, {
+    navigateSection: async (call, callback) => {
+      const { section } = call.request;
+      if (!demoBrowser || !demoBrowser.page) {
+        callback(null, { success: false, message: 'DemoBrowser not started' });
+        return;
+      }
+      try {
+        await demoBrowser.navigateToSection(section);
+        const url = demoBrowser.page.url();
+        callback(null, { success: true, message: 'navigated', current_url: url });
+      } catch (err) {
+        logger.error({ err: err.message, section }, 'DemoBrowser gRPC nav failed');
+        callback(null, { success: false, message: err.message });
+      }
+    },
+  });
+  server.bindAsync(
+    `0.0.0.0:${port}`,
+    grpc.ServerCredentials.createInsecure(),
+    (err, boundPort) => {
+      if (err) {
+        logger.error({ err }, 'Failed to start DemoBrowser gRPC server');
+        return;
+      }
+      logger.info({ port: boundPort }, 'DemoBrowser gRPC server started');
+    },
+  );
+  demoBrowserGrpcServer = server;
+}
 
 // ─── Zoom SDK Mode ───
 
@@ -725,6 +760,9 @@ async function main() {
         // Launch demo browser on Xvfb before SDK starts (so there's something to share)
         demoBrowser = new DemoBrowser();
         await demoBrowser.start();
+
+        // Expose gRPC so orchestrator can navigate the screen-shared browser
+        startDemoBrowserGrpc();
 
         const bot = new ZoomSDKBot(callId);
         const started = await bot.start(meetingId, process.env.ZOOM_MEETING_PASSWORD);

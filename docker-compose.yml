@@ -27,6 +27,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - CLAUDE_GRPC_ADDR=claude-wrapper:50052
       - BROWSER_GRPC_ADDR=browser-controller:50053
+      - DEMO_BROWSER_GRPC_ADDR=zoom-bot:50057
       - TTS_GRPC_ADDR=tts-service:50054
       - PERSISTENCE_GRPC_ADDR=persistence:50055
       - HTTP_PORT=3000

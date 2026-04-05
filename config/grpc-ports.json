@@ -4,5 +4,6 @@
   "browser-controller": { "grpc": 50053 },
   "tts-service": { "grpc": 50054 },
   "persistence": { "grpc": 50055 },
-  "stt-service": { "grpc": 50056 }
+  "stt-service": { "grpc": 50056 },
+  "zoom-bot": { "grpc": 50057 }
 }

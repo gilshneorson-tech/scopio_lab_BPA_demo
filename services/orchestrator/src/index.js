@@ -19,6 +19,7 @@ const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || VOICE_IDS[DEMO_LANGUAGE] || 
 import {
   createClaudeClient,
   createBrowserClient,
+  createDemoBrowserClient,
   createTTSClient,
   createPersistenceClient,
 } from './grpc-clients.js';
@@ -39,11 +40,12 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const sessions = new Map();
 
 // gRPC clients (lazy-initialized)
-let claudeClient, browserClient, ttsClient, persistenceClient;
+let claudeClient, browserClient, demoBrowserClient, ttsClient, persistenceClient;
 
 function initClients() {
   claudeClient = createClaudeClient(process.env.CLAUDE_GRPC_ADDR || 'localhost:50052');
   browserClient = createBrowserClient(process.env.BROWSER_GRPC_ADDR || 'localhost:50053');
+  demoBrowserClient = createDemoBrowserClient(process.env.DEMO_BROWSER_GRPC_ADDR || 'localhost:50057');
   ttsClient = createTTSClient(process.env.TTS_GRPC_ADDR || 'localhost:50054');
   persistenceClient = createPersistenceClient(process.env.PERSISTENCE_GRPC_ADDR || 'localhost:50055');
 }
@@ -57,6 +59,20 @@ function browserExecuteAction(action) {
       if (err) return resolve({ success: false, message: err.message });
       resolve(result);
     });
+  });
+}
+
+function demoBrowserNavigate(callId, section) {
+  return new Promise((resolve) => {
+    if (!demoBrowserClient) return resolve({ success: false, message: 'No demo browser client' });
+    demoBrowserClient.navigateSection(
+      { call_id: callId, section },
+      { deadline: Date.now() + 5000 },
+      (err, result) => {
+        if (err) return resolve({ success: false, message: err.message });
+        resolve(result);
+      },
+    );
   });
 }
 
@@ -471,12 +487,14 @@ async function startHTTP() {
 
           logger.info({ callId, step: stepIdx, topic: step.topic }, 'Auto-demo step');
 
-          // Navigate browser
-          browserExecuteAction({
-            call_id: callId,
-            type: 0,
-            section: step.browser_action.section,
-          });
+          // Navigate the screen-shared browser (zoom-bot's DemoBrowser)
+          const navResult = await demoBrowserNavigate(callId, step.browser_action.section);
+          if (navResult.success) {
+            logger.info({ callId, section: step.browser_action.section }, 'Screen browser navigated');
+          } else {
+            logger.warn({ callId, section: step.browser_action.section, msg: navResult.message }, 'Screen browser nav failed, falling back to browser-controller');
+            browserExecuteAction({ call_id: callId, type: 0, section: step.browser_action.section });
+          }
 
           // Speak the script via TTS
           logger.info({ callId, step: stepIdx, scriptLength: script.length }, 'Speaking step script');

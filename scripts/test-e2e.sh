@@ -98,8 +98,36 @@ else
 fi
 echo ""
 
-# ─── 5. End session ───
-bold "5. End Session"
+# ─── 5. Auto-demo with browser sync fallback ───
+bold "5. Auto-Demo Browser Sync (fallback path)"
+# Create a fresh session for auto-demo test
+AD_SESSION=$(curl -sf -X POST "$BASE_URL/api/sessions" \
+  -H "Content-Type: application/json" \
+  -d '{"prospect_name":"Dr. AutoDemo","zoom_meeting_id":"999888777"}' 2>/dev/null || echo '{"error":"failed"}')
+AD_CALL_ID=$(echo "$AD_SESSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('call_id',''))" 2>/dev/null || echo "")
+
+if [ -n "$AD_CALL_ID" ]; then
+  AD_RESULT=$(curl -sf -X POST "$BASE_URL/api/sessions/$AD_CALL_ID/auto-demo" 2>/dev/null || echo '{"error":"failed"}')
+  AD_STATUS=$(echo "$AD_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+  AD_STEPS=$(echo "$AD_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('steps',0))" 2>/dev/null || echo "0")
+  check "Auto-demo started" "$([ "$AD_STATUS" = "started" ] && echo true || echo false)"
+  check "Auto-demo has 10 steps" "$([ "$AD_STEPS" = "10" ] && echo true || echo false)"
+
+  # Wait briefly and check session is advancing (zoom-bot not running, so it falls back to browser-controller)
+  sleep 3
+  AD_INFO=$(curl -sf "$BASE_URL/api/sessions/$AD_CALL_ID" 2>/dev/null || echo '{"state":"unknown"}')
+  AD_STATE=$(echo "$AD_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('state',''))" 2>/dev/null || echo "")
+  check "Auto-demo session still running" "$([ "$AD_STATE" = "presenting" ] && echo true || echo false)"
+
+  # Clean up
+  curl -sf -X POST "$BASE_URL/api/sessions/$AD_CALL_ID/end" >/dev/null 2>&1 || true
+else
+  red "  SKIP: Could not create auto-demo session"
+fi
+echo ""
+
+# ─── 6. End session ───
+bold "6. End Session"
 END_RESULT=$(curl -sf -X POST "$BASE_URL/api/sessions/$CALL_ID/end" 2>/dev/null || echo '{"ok":false}')
 END_OK=$(echo "$END_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ok',False))" 2>/dev/null || echo "False")
 check "Session ended cleanly" "$([ "$END_OK" = "True" ] && echo true || echo false)"

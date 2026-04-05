@@ -66,3 +66,15 @@ message PageState {
   string title = 2;
   bool is_loaded = 3;
 }
+
+// ─── DemoBrowser: zoom-bot's screen-shared Playwright browser ───
+
+service DemoBrowser {
+  // Navigate the screen-shared browser to a demo section
+  rpc NavigateSection(NavigateSectionRequest) returns (BrowserResult);
+}
+
+message NavigateSectionRequest {
+  string call_id = 1;
+  string section = 2;
+}

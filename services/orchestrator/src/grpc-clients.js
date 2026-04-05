@@ -41,6 +41,14 @@ export function createTTSClient(address = 'localhost:50054') {
   );
 }
 
+export function createDemoBrowserClient(address = 'localhost:50057') {
+  const proto = loadProto('browser.proto');
+  return new proto.scopio.browser.DemoBrowser(
+    address,
+    grpc.credentials.createInsecure(),
+  );
+}
+
 export function createPersistenceClient(address = 'localhost:50055') {
   const proto = loadProto('persistence.proto');
   return new proto.scopio.persistence.Persistence(
