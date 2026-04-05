@@ -170,11 +170,19 @@ const INTERRUPT_PATTERNS = /\b(i have a question|can i ask|excuse me|hold on|wai
 // Filler / noise that should never pause the demo or call Claude (STT echo + agreement)
 const FILLER_PATTERNS = /^[\s.,!?]*(?:it|the|a|um|uh|hmm|ok|okay|got it|sure|right|yes|yeah|yep|interesting|cool|great|nice|thanks|thank you|hello|hi|hey|hello hello)[\s.,!?]*$/i;
 
+// Minimum confidence for non-interrupt transcriptions (filter STT garbage)
+const MIN_CONFIDENCE = 0.65;
+const MIN_WORD_COUNT = 2;
+
 // STT deduplication: track recent transcripts per call to avoid double-processing
 const recentTranscripts = new Map(); // call_id → { text, timestamp }
 
+// Interrupt cooldown: don't repeat "Of course, go ahead" within this window
+const lastInterruptAck = new Map(); // call_id → timestamp
+const INTERRUPT_COOLDOWN_MS = 10000;
+
 async function handleTranscription(call, callback) {
-  const { call_id, text, is_final } = call.request;
+  const { call_id, text, is_final, confidence } = call.request;
   const t_received = Date.now();
   const trimmed = text.trim();
 
@@ -192,11 +200,13 @@ async function handleTranscription(call, callback) {
     return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
   }
 
-  // Deduplicate: if we processed a very similar transcript in the last 3s, skip
+  // Deduplicate: skip if we processed a similar transcript recently
+  // Catches both exact repeats and partial→final overlaps
   const recent = recentTranscripts.get(call_id);
-  if (recent && t_received - recent.timestamp < 3000) {
-    const overlap = trimmed.startsWith(recent.text) || recent.text.startsWith(trimmed);
-    if (overlap) {
+  if (recent && t_received - recent.timestamp < 4000) {
+    const a = trimmed.toLowerCase();
+    const b = recent.text.toLowerCase();
+    if (a.startsWith(b) || b.startsWith(a) || a.includes(b) || b.includes(a)) {
       logger.info({ call_id, text: trimmed, prev: recent.text }, 'Duplicate transcript — skipping');
       return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
     }
@@ -212,7 +222,17 @@ async function handleTranscription(call, callback) {
   if (FILLER_PATTERNS.test(trimmed)) {
     logger.info({ call_id, text: trimmed }, 'Filler detected — ignoring');
     const demoState = autoDemos.get(call_id);
-    if (demoState) demoState.paused = false; // Un-pause if interim paused for filler
+    if (demoState) demoState.paused = false;
+    return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
+  }
+
+  // Filter low-confidence STT garbage (but let interrupts through regardless)
+  const wordCount = trimmed.split(/\s+/).length;
+  const isLikelyInterrupt = INTERRUPT_PATTERNS.test(trimmed);
+  if (!isLikelyInterrupt && confidence > 0 && (confidence < MIN_CONFIDENCE || wordCount < MIN_WORD_COUNT)) {
+    logger.info({ call_id, text: trimmed, confidence, wordCount }, 'Low-confidence STT — ignoring');
+    const demoState = autoDemos.get(call_id);
+    if (demoState) demoState.paused = false;
     return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
   }
 
@@ -228,15 +248,20 @@ async function handleTranscription(call, callback) {
   const step = getStep(ctx.currentStep);
 
   // Check if this is a brief interrupt (not the actual question yet)
-  const isInterrupt = INTERRUPT_PATTERNS.test(text) && text.split(/\s+/).length < 12;
+  if (isLikelyInterrupt && wordCount < 12) {
+    // Cooldown: don't repeat ack if we just said it
+    const lastAck = lastInterruptAck.get(call_id) || 0;
+    if (t_received - lastAck < INTERRUPT_COOLDOWN_MS) {
+      logger.info({ call_id, text: trimmed }, 'Interrupt during cooldown — still waiting for question');
+      return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
+    }
 
-  if (isInterrupt) {
-    logger.info({ call_id, text }, 'Interrupt detected — acknowledging, waiting for full question');
+    lastInterruptAck.set(call_id, t_received);
+    logger.info({ call_id, text: trimmed }, 'Interrupt detected — acknowledging, waiting for full question');
     const ackText = 'Of course, go ahead.';
-    appendHistory(call_id, { role: 'prospect', text, timestamp: Date.now() });
+    appendHistory(call_id, { role: 'prospect', text: trimmed, timestamp: Date.now() });
     appendHistory(call_id, { role: 'agent', text: ackText, timestamp: Date.now() });
 
-    // Demo stays paused — will resume when the actual question is answered
     callback(null, {
       call_id,
       type: 'ANSWER',
@@ -256,7 +281,7 @@ async function handleTranscription(call, callback) {
       current_step: ctx.currentStep,
       step_description: `Step ${step.index}: ${step.topic} — ${step.script}`,
       conversation_history: history,
-      prospect_transcript: text,
+      prospect_transcript: trimmed,
     });
     const t_claude_done = Date.now();
 
@@ -269,50 +294,53 @@ async function handleTranscription(call, callback) {
       claudeSection,
       claude_latency_ms: t_claude_done - t_claude_start,
       total_orchestrator_ms: t_claude_done - t_received,
-      transcript: text.slice(0, 80),
+      transcript: trimmed.slice(0, 80),
     }, 'Transcription handled');
 
-    // Update state machine
-    if (action === 'ADVANCE') {
-      actor.send({ type: 'ADVANCE' });
-    } else if (action === 'ANSWER') {
-      actor.send({ type: 'ANSWER', question: text, answer: response_text });
-    } else if (action === 'REPEAT') {
-      actor.send({ type: 'REPEAT' });
-    } else if (action === 'CLOSE') {
-      actor.send({ type: 'CLOSE' });
+    // Update state machine (but don't ADVANCE if demo already ended)
+    const currentState = String(snapshot.value);
+    if (currentState !== 'ended') {
+      if (action === 'ADVANCE') {
+        actor.send({ type: 'ADVANCE' });
+      } else if (action === 'ANSWER') {
+        actor.send({ type: 'ANSWER', question: trimmed, answer: response_text });
+      } else if (action === 'REPEAT') {
+        actor.send({ type: 'REPEAT' });
+      } else if (action === 'CLOSE') {
+        actor.send({ type: 'CLOSE' });
+      }
     }
 
     // Record exchange
-    appendHistory(call_id, { role: 'prospect', text, timestamp: Date.now() });
+    appendHistory(call_id, { role: 'prospect', text: trimmed, timestamp: Date.now() });
     appendHistory(call_id, { role: 'agent', text: response_text, timestamp: Date.now() });
 
-    // Resume auto-demo after answering
+    // Don't resume auto-demo immediately — let the TTS response play first
+    // The zoom-bot will call speakResponse which takes time;
+    // resume after a delay proportional to the response length
     if (demoState) {
-      demoState.paused = false;
-      logger.info({ call_id }, 'Auto-demo resumed after Q&A');
+      const estimatedSpeechMs = Math.max(response_text.length * 60, 2000); // ~60ms per char
+      setTimeout(() => {
+        if (demoState.paused) {
+          demoState.paused = false;
+          logger.info({ call_id }, 'Auto-demo resumed after Q&A');
+        }
+      }, estimatedSpeechMs);
     }
 
-    // Navigate browser: use Claude's requested section if provided, otherwise current step
-    const updatedSnapshot = actor.getSnapshot();
-    const nextStep = getStep(updatedSnapshot.context.currentStep);
-    const navSection = claudeSection || nextStep.browser_action.section;
-    browserExecuteAction({
-      call_id,
-      type: 0, // NAVIGATE
-      section: navSection,
-    });
+    // Navigate browser: use Claude's section, or stay on current section (not auto-advance to next step)
+    const navSection = claudeSection || step.browser_action.section;
+    demoBrowserNavigate(call_id, navSection);
 
     callback(null, {
       call_id,
       type: action,
       response_text,
-      browser_command: { ...nextStep.browser_action, section: navSection },
-      demo_step: updatedSnapshot.context.currentStep,
+      browser_command: { ...step.browser_action, section: navSection },
+      demo_step: ctx.currentStep,
     });
   } catch (err) {
     logger.error({ err, call_id }, 'Claude decision failed');
-    // Resume demo even on error so it doesn't stay stuck
     if (demoState) demoState.paused = false;
     callback(null, {
       call_id,
@@ -359,6 +387,7 @@ function handleStartSession(call, callback) {
   }
   sessions.clear();
   recentTranscripts.clear();
+  lastInterruptAck.clear();
 
   createSession(callId, prospect_name);
 
