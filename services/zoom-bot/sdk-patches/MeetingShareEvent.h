@@ -3,7 +3,6 @@
 
 #include <iostream>
 #include "meeting_service_components/meeting_sharing_interface.h"
-#include "util/Log.h"
 
 using namespace std;
 using namespace ZOOMSDK;
@@ -15,20 +14,17 @@ public:
     void onSharingStatus(SharingStatus status, unsigned int userId) override {
         switch (status) {
             case Sharing_Self_Send_Begin:
-                Log::success("screen share started");
+                cout << "✅ screen share started" << endl;
                 break;
             case Sharing_Self_Send_End:
-                Log::info("screen share stopped");
+                cout << "⏹️ screen share stopped" << endl;
                 break;
             default:
                 break;
         }
     }
 
-    void onLockShareStatus(bool locked) override {
-        if (locked) Log::info("share locked by host");
-    }
-
+    void onLockShareStatus(bool locked) override {}
     void onShareContentNotification(ShareInfo& shareInfo) override {}
     void onMultiShareSwitchToSingleShareNeedConfirm(IShareSwitchMultiToSingleConfirmHandler* handler) override {}
     void onShareSettingTypeChangedNotification(ShareSettingType type) override {}

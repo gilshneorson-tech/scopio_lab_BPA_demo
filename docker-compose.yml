@@ -32,6 +32,7 @@ services:
       - HTTP_PORT=3000
       - GRPC_PORT=50051
       - AGENT_NAME=${AGENT_NAME:-Alex}
+      - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
       - TTS_MODEL=${TTS_MODEL:-eleven_turbo_v2}
@@ -147,6 +148,7 @@ services:
       - GRPC_PORT=50052
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - AGENT_NAME=${AGENT_NAME:-Alex}
+      - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('net').connect(50052).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]

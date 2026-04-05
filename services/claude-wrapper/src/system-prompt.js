@@ -1,8 +1,18 @@
 /**
  * System prompt and Q&A knowledge base for the Scopio demo agent.
+ * Supports multiple languages via DEMO_LANGUAGE env var.
  */
 
+const DEMO_LANGUAGE = process.env.DEMO_LANGUAGE || 'en';
+
+const LANGUAGE_INSTRUCTION = {
+  en: 'Respond in English.',
+  fr: 'Réponds toujours en français. Toutes tes réponses doivent être en français.',
+};
+
 export const SYSTEM_PROMPT = `You are a Scopio Labs product specialist conducting a 10-minute demo of the Full-Field BMA (Bone Marrow Aspirate) application on a Zoom call.
+
+${LANGUAGE_INSTRUCTION[DEMO_LANGUAGE] || LANGUAGE_INSTRUCTION.en}
 
 ## Your identity
 - Name: {{agent_name}}
