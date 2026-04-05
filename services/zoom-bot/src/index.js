@@ -545,7 +545,7 @@ file="meeting-audio.pcm"
       const stream = ttsClient.synthesize({
         call_id: this.callId,
         text,
-        voice_id: process.env.ELEVENLABS_VOICE_ID || 'XrExE9yKIg1WjnnlVkGX',
+        voice_id: process.env.ELEVENLABS_VOICE_ID || (process.env.DEMO_LANGUAGE === 'fr' ? 'xNtG3W2oqJs0cJZuTyBc' : 'XrExE9yKIg1WjnnlVkGX'),
         model: process.env.TTS_MODEL || 'eleven_turbo_v2',
       });
 

@@ -8,7 +8,14 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-import { demoMachine, DEMO_STEPS } from './demo-machine.js';
+import { demoMachine, DEMO_STEPS, DEMO_LANGUAGE } from './demo-machine.js';
+
+// Voice IDs per language
+const VOICE_IDS = {
+  en: 'XrExE9yKIg1WjnnlVkGX', // Matilda
+  fr: 'xNtG3W2oqJs0cJZuTyBc', // Chloé
+};
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || VOICE_IDS[DEMO_LANGUAGE] || VOICE_IDS.en;
 import {
   createClaudeClient,
   createBrowserClient,
@@ -476,7 +483,7 @@ async function startHTTP() {
           const ttsResult = await ttsSynthesize({
             call_id: callId,
             text: script,
-            voice_id: process.env.ELEVENLABS_VOICE_ID || 'XrExE9yKIg1WjnnlVkGX',
+            voice_id: VOICE_ID,
             model: process.env.TTS_MODEL || 'eleven_turbo_v2',
           });
 

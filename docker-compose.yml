@@ -70,6 +70,7 @@ services:
       - AUDIO_OUTPUT_DIR=/data/audio
       - AUDIO_OUTPUT=${AUDIO_OUTPUT:-file}
       - AUTO_DEMO=${AUTO_DEMO:-true}
+      - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - DISPLAY=:99
     volumes:

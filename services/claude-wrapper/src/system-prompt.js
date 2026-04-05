@@ -10,6 +10,12 @@ const LANGUAGE_INSTRUCTION = {
   fr: 'Réponds toujours en français. Toutes tes réponses doivent être en français.',
 };
 
+// Voice IDs per language
+export const VOICE_IDS = {
+  en: 'XrExE9yKIg1WjnnlVkGX', // Matilda — professional English
+  fr: 'xNtG3W2oqJs0cJZuTyBc', // Chloé — native French
+};
+
 export const SYSTEM_PROMPT = `You are a Scopio Labs product specialist conducting a 10-minute demo of the Full-Field BMA (Bone Marrow Aspirate) application on a Zoom call.
 
 ${LANGUAGE_INSTRUCTION[DEMO_LANGUAGE] || LANGUAGE_INSTRUCTION.en}
