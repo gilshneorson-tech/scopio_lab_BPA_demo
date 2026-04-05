@@ -505,6 +505,7 @@ async function startHTTP() {
             model: process.env.TTS_MODEL || 'eleven_turbo_v2',
           });
 
+          let speechDurationMs = 0;
           if (ttsResult.audio_chunks.length > 0) {
             // Write TTS audio for the zoom-bot virtual mic to pick up
             const combined = Buffer.concat(ttsResult.audio_chunks);
@@ -517,14 +518,14 @@ async function startHTTP() {
             }
 
             // Wait for speech duration (audio bytes / 2 bytes per sample / 16000 Hz)
-            const durationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
-            await new Promise(r => setTimeout(r, durationMs + 1000));
+            speechDurationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
+            await new Promise(r => setTimeout(r, speechDurationMs + 1000));
           }
 
-          // Wait for step duration (minus the speech time already waited)
+          // Wait for remaining step duration after speech (avoid double-waiting)
           // Pause if prospect is speaking
-          const waitMs = Math.max(step.duration_sec * 1000 - 5000, 2000);
-          const waitEnd = Date.now() + waitMs;
+          const remainingMs = Math.max(step.duration_sec * 1000 - speechDurationMs - 1000, 2000);
+          const waitEnd = Date.now() + remainingMs;
           while (Date.now() < waitEnd && demoState.running) {
             if (demoState.paused) {
               // Wait while paused (prospect is asking a question)
