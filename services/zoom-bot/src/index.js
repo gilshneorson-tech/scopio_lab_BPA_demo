@@ -293,6 +293,9 @@ file="meeting-audio.pcm"
 `;
     writeFileSync(configPath, config);
 
+    // Ensure out/ directory exists for SDK audio output
+    ensureDir(resolve(process.cwd(), 'out'));
+
     logger.info({ meetingId, joinUrl, callId: this.callId }, 'Starting Zoom SDK bot');
 
     // Spawn the C++ SDK process
@@ -328,8 +331,8 @@ file="meeting-audio.pcm"
   }
 
   startAudioWatcher() {
-    // SDK writes to out/ relative to its working directory
-    const audioFile = `${SDK_BUILD_DIR}/../out/meeting-audio.pcm`;
+    // SDK writes to out/ relative to the Node.js cwd (where the process was spawned)
+    const audioFile = resolve(process.cwd(), 'out/meeting-audio.pcm');
     let lastSize = 0;
     let sttStream = null;
 
