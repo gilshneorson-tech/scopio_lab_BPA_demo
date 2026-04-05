@@ -10,7 +10,7 @@ const PROTO_DIR = resolve(__dirname, '../../../proto');
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
-const DEFAULT_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // Rachel
+const DEFAULT_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'XrExE9yKIg1WjnnlVkGX'; // Matilda
 const DEFAULT_MODEL = process.env.TTS_MODEL || 'eleven_turbo_v2';
 
 let elevenLabs = null;
