@@ -277,12 +277,25 @@ SDKError Zoom::startRawRecording() {
             }
 
             // Auto-unmute so TTS audio is heard by participants
-            sleep(1);
-            auto unmuteErr = audioController->UnMuteAudio(0);
-            if (hasError(unmuteErr, "unmute audio"))
-                Log::error("Failed to unmute audio");
-            else
-                Log::info("unmute audio");
+            sleep(2);
+            auto* partCtl = m_meetingService->GetMeetingParticipantsController();
+            if (partCtl) {
+                auto* myself = partCtl->GetMySelfUser();
+                if (myself) {
+                    auto myId = myself->GetUserID();
+                    stringstream ss;
+                    ss << "My user ID: " << myId << ", audio muted: " << (myself->IsAudioMuted() ? "yes" : "no");
+                    Log::info(ss.str());
+
+                    if (myself->IsAudioMuted()) {
+                        auto unmuteErr = audioController->UnMuteAudio(myId);
+                        if (hasError(unmuteErr, "unmute audio"))
+                            Log::error("Failed to unmute audio");
+                        else
+                            Log::info("unmute audio");
+                    }
+                }
+            }
         }
 
         m_audioHelper = GetAudioRawdataHelper();
