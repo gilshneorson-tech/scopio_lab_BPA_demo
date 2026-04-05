@@ -4,7 +4,7 @@ import Fastify from 'fastify';
 import { createActor } from 'xstate';
 import { v4 as uuidv4 } from 'uuid';
 import pino from 'pino';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -60,6 +60,21 @@ function browserInitialize(request) {
       if (err) return resolve({ success: false, message: err.message });
       resolve(result);
     });
+  });
+}
+
+function ttsSynthesize(request) {
+  return new Promise((resolve) => {
+    if (!ttsClient) return resolve({ audio_chunks: [], error: 'No TTS client' });
+    const chunks = [];
+    const stream = ttsClient.synthesize(request);
+    stream.on('data', (response) => {
+      if (response.audio_data && response.audio_data.length > 0) {
+        chunks.push(Buffer.from(response.audio_data));
+      }
+    });
+    stream.on('end', () => resolve({ audio_chunks: chunks }));
+    stream.on('error', (err) => resolve({ audio_chunks: [], error: err.message }));
   });
 }
 
@@ -410,6 +425,120 @@ async function startHTTP() {
         topic: step.topic,
       };
     }
+  });
+
+  // ─── Auto-Demo: run full 10-step demo autonomously ───
+
+  // Track running auto-demos so we can pause/stop them
+  const autoDemos = new Map(); // callId → { running, paused }
+
+  app.post('/api/sessions/:callId/auto-demo', async (req) => {
+    const { callId } = req.params;
+    const actor = sessions.get(callId);
+    if (!actor) return { error: 'No session found' };
+
+    const snapshot = actor.getSnapshot();
+    if (snapshot.value === 'ended' || snapshot.status === 'done') {
+      return { error: 'Session already ended' };
+    }
+
+    // Don't start if already running
+    if (autoDemos.has(callId)) {
+      return { call_id: callId, status: 'already_running' };
+    }
+
+    const agentName = process.env.AGENT_NAME || 'Alex';
+    const demoState = { running: true, paused: false };
+    autoDemos.set(callId, demoState);
+
+    logger.info({ callId }, 'Starting auto-demo');
+
+    // Run demo in background (don't await — return immediately)
+    (async () => {
+      try {
+        for (let stepIdx = snapshot.context.currentStep; stepIdx < DEMO_STEPS.length; stepIdx++) {
+          if (!demoState.running) break;
+
+          const step = DEMO_STEPS[stepIdx];
+          const script = step.script.replace('{{agent_name}}', agentName);
+
+          logger.info({ callId, step: stepIdx, topic: step.topic }, 'Auto-demo step');
+
+          // Navigate browser
+          browserExecuteAction({
+            call_id: callId,
+            type: 0,
+            section: step.browser_action.section,
+          });
+
+          // Speak the script via TTS
+          logger.info({ callId, step: stepIdx, scriptLength: script.length }, 'Speaking step script');
+          const ttsResult = await ttsSynthesize({
+            call_id: callId,
+            text: script,
+            voice_id: process.env.ELEVENLABS_VOICE_ID || 'XrExE9yKIg1WjnnlVkGX',
+            model: process.env.TTS_MODEL || 'eleven_turbo_v2',
+          });
+
+          if (ttsResult.audio_chunks.length > 0) {
+            // Write TTS audio for the zoom-bot virtual mic to pick up
+            const combined = Buffer.concat(ttsResult.audio_chunks);
+            const ttsFile = '/tmp/zoom-audio/tts-output.pcm';
+            try {
+              writeFileSync(ttsFile, combined);
+              logger.info({ callId, bytes: combined.length }, 'TTS audio written for playback');
+            } catch (err) {
+              logger.warn({ err: err.message }, 'Failed to write TTS file (zoom-bot will handle)');
+            }
+
+            // Wait for speech duration (audio bytes / 2 bytes per sample / 16000 Hz)
+            const durationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
+            await new Promise(r => setTimeout(r, durationMs + 1000));
+          }
+
+          // Wait for step duration (minus the speech time already waited)
+          // Pause if prospect is speaking
+          const waitMs = Math.max(step.duration_sec * 1000 - 5000, 2000);
+          const waitEnd = Date.now() + waitMs;
+          while (Date.now() < waitEnd && demoState.running) {
+            if (demoState.paused) {
+              // Wait while paused (prospect is asking a question)
+              await new Promise(r => setTimeout(r, 500));
+              continue;
+            }
+            await new Promise(r => setTimeout(r, 500));
+          }
+
+          if (!demoState.running) break;
+
+          // Advance state machine
+          if (stepIdx < DEMO_STEPS.length - 1) {
+            actor.send({ type: 'ADVANCE' });
+          }
+        }
+
+        // Demo complete
+        actor.send({ type: 'CLOSE' });
+        logger.info({ callId }, 'Auto-demo completed');
+      } catch (err) {
+        logger.error({ err, callId }, 'Auto-demo error');
+      } finally {
+        autoDemos.delete(callId);
+      }
+    })();
+
+    return { call_id: callId, status: 'started', steps: DEMO_STEPS.length };
+  });
+
+  app.post('/api/sessions/:callId/auto-demo/stop', async (req) => {
+    const { callId } = req.params;
+    const demo = autoDemos.get(callId);
+    if (demo) {
+      demo.running = false;
+      autoDemos.delete(callId);
+      return { call_id: callId, status: 'stopped' };
+    }
+    return { call_id: callId, status: 'not_running' };
   });
 
   app.post('/api/sessions/:callId/end', async (req) => {

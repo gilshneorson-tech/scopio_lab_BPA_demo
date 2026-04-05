@@ -32,7 +32,12 @@ services:
       - HTTP_PORT=3000
       - GRPC_PORT=50051
       - AGENT_NAME=${AGENT_NAME:-Alex}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
+      - TTS_MODEL=${TTS_MODEL:-eleven_turbo_v2}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - tts-audio:/tmp/zoom-audio
     depends_on:
       redis:
         condition: service_healthy
@@ -63,10 +68,12 @@ services:
       - AUDIO_INPUT_FILE=${AUDIO_INPUT_FILE}
       - AUDIO_OUTPUT_DIR=/data/audio
       - AUDIO_OUTPUT=${AUDIO_OUTPUT:-file}
+      - AUTO_DEMO=${AUTO_DEMO:-true}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - DISPLAY=:99
     volumes:
       - audio-data:/data/audio
+      - tts-audio:/tmp/zoom-audio
     depends_on:
       - orchestrator
       - stt-service
@@ -169,3 +176,4 @@ services:
 
 volumes:
   audio-data:
+  tts-audio:

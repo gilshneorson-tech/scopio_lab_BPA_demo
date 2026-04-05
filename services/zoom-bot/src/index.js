@@ -645,6 +645,24 @@ async function main() {
           process.exit(1);
         }
 
+        // Start auto-demo after a delay (let VoIP + virtual mic initialize)
+        const autoDemo = process.env.AUTO_DEMO !== 'false';
+        if (autoDemo) {
+          setTimeout(async () => {
+            const orchestratorUrl = `http://${process.env.ORCHESTRATOR_GRPC_ADDR?.split(':')[0] || 'localhost'}:3000`;
+            try {
+              logger.info({ callId }, 'Triggering auto-demo');
+              const res = await fetch(`${orchestratorUrl}/api/sessions/${callId}/auto-demo`, {
+                method: 'POST',
+              });
+              const data = await res.json();
+              logger.info({ callId, data }, 'Auto-demo triggered');
+            } catch (err) {
+              logger.error({ err: err.message }, 'Failed to trigger auto-demo');
+            }
+          }, 10000); // Wait 10s for audio to fully initialize
+        }
+
         // Graceful shutdown
         const shutdown = () => {
           logger.info('Shutting down...');
