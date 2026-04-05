@@ -289,7 +289,7 @@ join-url="${joinUrl}"
 display-name="Scopio Demo Agent"
 
 [RawAudio]
-file="${SDK_AUDIO_DIR}/meeting-audio.pcm"
+file="meeting-audio.pcm"
 `;
     writeFileSync(configPath, config);
 
@@ -328,7 +328,8 @@ file="${SDK_AUDIO_DIR}/meeting-audio.pcm"
   }
 
   startAudioWatcher() {
-    const audioFile = `${SDK_AUDIO_DIR}/meeting-audio.pcm`;
+    // SDK writes to out/ relative to its working directory
+    const audioFile = `${SDK_BUILD_DIR}/../out/meeting-audio.pcm`;
     let lastSize = 0;
     let sttStream = null;
 
