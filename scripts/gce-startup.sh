@@ -53,6 +53,19 @@ else
   cd "$DEPLOY_DIR"
 fi
 
+# ─── 3.5. Download Zoom SDK from GCS (if not already present) ───
+SDK_DIR="$DEPLOY_DIR/services/zoom-bot/sdk/zoomsdk"
+if [ ! -f "$SDK_DIR/libmeetingsdk.so" ]; then
+  echo "Downloading Zoom SDK from GCS..."
+  mkdir -p "$SDK_DIR"
+  gsutil cp gs://scopio-lab-bpa-demo-sdk/zoom-meeting-sdk-linux_x86_64-7.0.0.tar.gz /tmp/zoomsdk.tar.gz
+  tar xzf /tmp/zoomsdk.tar.gz -C "$DEPLOY_DIR/services/zoom-bot/sdk/"
+  rm /tmp/zoomsdk.tar.gz
+  echo "Zoom SDK extracted to $SDK_DIR"
+else
+  echo "Zoom SDK already present"
+fi
+
 # ─── 4. Pull secrets from Secret Manager → .env ───
 echo "Pulling secrets from Secret Manager..."
 
