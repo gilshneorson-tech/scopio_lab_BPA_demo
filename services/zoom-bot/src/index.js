@@ -310,15 +310,15 @@ file="${SDK_AUDIO_DIR}/meeting-audio.pcm"
     });
 
     this.process.stdout.on('data', (data) => {
-      logger.debug({ sdk: data.toString().trim() }, 'SDK stdout');
+      logger.info({ sdk: data.toString().trim() }, 'SDK stdout');
     });
 
     this.process.stderr.on('data', (data) => {
-      logger.debug({ sdk: data.toString().trim() }, 'SDK stderr');
+      logger.info({ sdk: data.toString().trim() }, 'SDK stderr');
     });
 
-    this.process.on('exit', (code) => {
-      logger.info({ code, callId: this.callId }, 'Zoom SDK process exited');
+    this.process.on('exit', (code, signal) => {
+      logger.info({ code, signal, callId: this.callId }, 'Zoom SDK process exited');
     });
 
     // Watch for audio output from SDK
