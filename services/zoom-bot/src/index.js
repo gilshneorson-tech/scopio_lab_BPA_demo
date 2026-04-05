@@ -299,10 +299,10 @@ file="meeting-audio.pcm"
 
     logger.info({ meetingId, joinUrl, callId: this.callId }, 'Starting Zoom SDK bot');
 
-    // Spawn the C++ SDK process with transcribe flag for socket mode
+    // Spawn the C++ SDK process (file mode — socket mode crashes in SDK 7.0)
     this.process = spawn(sdkBinary, [
       '--config', configPath,
-      'RawAudio', '--transcribe',
+      'RawAudio',
     ], {
       env: {
         ...process.env,
@@ -317,9 +317,9 @@ file="meeting-audio.pcm"
       const msg = data.toString().trim();
       logger.info({ sdk: msg }, 'SDK stdout');
 
-      // Once connected and recording, connect to the audio socket
+      // Once connected and recording, start STT stream
       if (msg.includes('subscribe to raw audio') || msg.includes('start raw recording')) {
-        setTimeout(() => this.connectAudioSocket(), 1000);
+        setTimeout(() => this.openSTTStream(), 1000);
       }
     });
 
@@ -512,22 +512,13 @@ file="meeting-audio.pcm"
   }
 
   startFileWatcher() {
-    // Fallback: poll the audio file if socket mode isn't available
+    // Poll the audio file for new data and stream to STT
     const audioFile = resolve(process.cwd(), 'out/meeting-audio.pcm');
     let lastSize = 0;
-    let socketConnected = false;
 
     this.fileWatcher = setInterval(() => {
-      // Stop file watching if socket is connected
-      if (this.socketClient && this.socketClient.readyState === 'open') {
-        if (!socketConnected) {
-          socketConnected = true;
-          logger.info('Socket connected — disabling file watcher');
-        }
-        return;
-      }
-
       if (!existsSync(audioFile)) return;
+      if (this.isSpeaking) return; // Don't transcribe during TTS playback
 
       try {
         const buffer = readFileSync(audioFile);
@@ -550,7 +541,7 @@ file="meeting-audio.pcm"
           }
         }
       } catch { /* file locked by SDK */ }
-    }, 200);
+    }, 100); // Poll every 100ms for better responsiveness
   }
 
   stop() {
