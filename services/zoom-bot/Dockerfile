@@ -30,28 +30,31 @@ COPY services/zoom-bot/sdk/zoomsdk/ lib/zoomsdk/
 RUN cmake -B build -S . --preset debug \
     && cmake --build build
 
-## ─── Stage 2: Runtime (Node.js + C++ SDK binary) ───
-FROM node:20-slim
+## ─── Stage 2: Runtime (Ubuntu 24.04 matching build stage + Node.js) ───
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install Node.js 20
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs npm
+
 # Install runtime dependencies for SDK + audio
-# Use || true for packages that may differ between Debian/Ubuntu versions
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get install -y --no-install-recommends \
     pulseaudio pulseaudio-utils dbus \
     xvfb xauth \
-    ffmpeg curl \
-    libdbus-1-3 libgbm1 libglib2.0-0 \
+    ffmpeg \
+    libasound2t64 alsa-utils \
+    libatomic1 \
+    libdbus-1-3 libgbm1 libgl1 libgl1-mesa-dri libglib2.0-0t64 \
+    libegl1 libopencv-videoio406t64 libopencv-objdetect406t64 \
+    libopencv-imgproc406t64 libopencv-core406t64 \
     libx11-6 libx11-xcb1 libxcb-image0 libxcb-keysyms1 \
     libxcb-randr0 libxcb-shape0 libxcb-shm0 libxcb-xfixes0 \
-    libxcb-xtest0 libxfixes3 \
-    libssl3 \
-    && apt-get install -y --no-install-recommends libasound2 libgl1 libgl1-mesa-dri 2>/dev/null \
-    || apt-get install -y --no-install-recommends libasound2t64 libgl1-mesa-glx 2>/dev/null \
-    || true \
-    && apt-get install -y --no-install-recommends libopencv-core4.5d libopencv-imgproc4.5d 2>/dev/null \
-    || apt-get install -y --no-install-recommends libopencv-core406t64 libopencv-imgproc406t64 2>/dev/null \
-    || true \
+    libxcb-xtest0 libxfixes3 libssl3t64 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built SDK binary + shared libraries
