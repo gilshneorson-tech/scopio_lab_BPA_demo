@@ -512,13 +512,31 @@ file="meeting-audio.pcm"
     this.sttStream = sttClient.streamAudio();
 
     this.sttStream.on('data', (transcription) => {
-      if (!transcription.is_final || !transcription.text.trim()) return;
+      if (!transcription.text.trim()) return;
       if (this.isSpeaking) return; // Ignore transcriptions while we're speaking
 
       const text = transcription.text;
+
+      // Forward interim results to orchestrator so it can pause the demo immediately
+      // Only send final results for actual Q&A processing
+      if (!transcription.is_final) {
+        // Send as non-final — orchestrator will pause demo but won't call Claude
+        orchestratorClient.onTranscription(
+          {
+            call_id: this.callId,
+            text,
+            is_final: false,
+            confidence: 0,
+            timestamp_ms: Date.now(),
+          },
+          () => {}, // Fire-and-forget for interims
+        );
+        return;
+      }
+
       logger.info({ callId: this.callId, text, confidence: transcription.confidence }, 'Zoom STT transcription');
 
-      // Forward to orchestrator
+      // Forward final result to orchestrator for Claude processing
       const t_start = Date.now();
       orchestratorClient.onTranscription(
         {
@@ -540,7 +558,7 @@ file="meeting-audio.pcm"
             'Orchestrator decision',
           );
 
-          // Navigate browser if step changed
+          // Navigate browser if orchestrator sent a browser command
           if (action.browser_command && action.browser_command.section && demoBrowser) {
             demoBrowser.navigateToSection(action.browser_command.section);
           }

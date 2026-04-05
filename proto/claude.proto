@@ -26,4 +26,5 @@ message DecideResponse {
   string action = 2;          // ADVANCE, ANSWER, REPEAT, CLOSE
   string response_text = 3;   // What the agent should say
   string reasoning = 4;       // Internal reasoning (for logging)
+  string section = 5;         // Browser section to navigate to (optional)
 }

@@ -101,6 +101,9 @@ Decide one of:
 - REPEAT: prospect seems confused, re-explain current step
 - CLOSE: prospect signals they are done or wants to wrap up
 
+Available browser sections: home, overview, scan_viewer, ndc_panel, quantification, remote_access, report_export, integration, summary
+If the prospect asks to see a specific feature again (e.g. "show me the scan viewer"), include the section name in your response.
+
 Respond in this exact JSON format:
-{"action": "ADVANCE|ANSWER|REPEAT|CLOSE", "response": "your 2-3 sentence response to say out loud"}`;
+{"action": "ADVANCE|ANSWER|REPEAT|CLOSE", "response": "your 2-3 sentence response to say out loud", "section": "section_name_or_null"}`;
 }

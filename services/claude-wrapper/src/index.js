@@ -44,6 +44,7 @@ async function decide({ currentStep, stepDescription, history, prospectTranscrip
       return {
         action: parsed.action || 'WAIT',
         responseText: parsed.response || '',
+        section: parsed.section || null,
         reasoning: text,
       };
     }
@@ -55,6 +56,7 @@ async function decide({ currentStep, stepDescription, history, prospectTranscrip
   return {
     action: 'ANSWER',
     responseText: text.slice(0, 500),
+    section: null,
     reasoning: text,
   };
 }
@@ -103,6 +105,7 @@ async function handleDecide(call, callback) {
       action: result.action,
       response_text: result.responseText,
       reasoning: result.reasoning,
+      section: result.section || '',
     });
   } catch (err) {
     logger.error({ err, call_id }, 'Claude API call failed');

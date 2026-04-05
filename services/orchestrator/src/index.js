@@ -167,24 +167,60 @@ function loadOrchestratorProto() {
 // Detect brief interrupts: prospect wants to ask a question but hasn't asked it yet
 const INTERRUPT_PATTERNS = /\b(i have a question|can i ask|excuse me|hold on|wait|one moment|quick question|before you move on|sorry to interrupt|may i|can i jump in)\b/i;
 
+// Filler / noise that should never pause the demo or call Claude
+const FILLER_PATTERNS = /^[\s.,!?]*(?:it|the|a|um|uh|hmm|ok|okay|got it|sure|right|yes|yeah|yep|interesting|cool|great|nice|thanks|thank you|hello|hi|hey|hey alex|alex|hello hello|hello hello hello)[\s.,!?]*$/i;
+
+// STT deduplication: track recent transcripts per call to avoid double-processing
+const recentTranscripts = new Map(); // call_id → { text, timestamp }
+
 async function handleTranscription(call, callback) {
   const { call_id, text, is_final } = call.request;
   const t_received = Date.now();
+  const trimmed = text.trim();
 
-  if (!is_final || !text.trim()) {
+  if (!trimmed) {
     return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
   }
+
+  // Interim (non-final) results: pause demo immediately but don't process
+  if (!is_final) {
+    const demoState = autoDemos.get(call_id);
+    if (demoState && !demoState.paused && !FILLER_PATTERNS.test(trimmed)) {
+      demoState.paused = true;
+      logger.info({ call_id, transcript: trimmed.slice(0, 60) }, 'Auto-demo paused — prospect speaking (interim)');
+    }
+    return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
+  }
+
+  // Deduplicate: if we processed a very similar transcript in the last 3s, skip
+  const recent = recentTranscripts.get(call_id);
+  if (recent && t_received - recent.timestamp < 3000) {
+    const overlap = trimmed.startsWith(recent.text) || recent.text.startsWith(trimmed);
+    if (overlap) {
+      logger.info({ call_id, text: trimmed, prev: recent.text }, 'Duplicate transcript — skipping');
+      return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
+    }
+  }
+  recentTranscripts.set(call_id, { text: trimmed, timestamp: t_received });
 
   const actor = sessions.get(call_id);
   if (!actor) {
     return callback(new Error(`No session for call_id: ${call_id}`));
   }
 
-  // Pause auto-demo whenever prospect speaks (they may be interrupting)
+  // Skip filler / noise — don't pause demo or call Claude for these
+  if (FILLER_PATTERNS.test(trimmed)) {
+    logger.info({ call_id, text: trimmed }, 'Filler detected — ignoring');
+    const demoState = autoDemos.get(call_id);
+    if (demoState) demoState.paused = false; // Un-pause if interim paused for filler
+    return callback(null, { call_id, type: 'WAIT', demo_step: 0 });
+  }
+
+  // Pause auto-demo for substantive speech (may already be paused from interim)
   const demoState = autoDemos.get(call_id);
   if (demoState) {
     demoState.paused = true;
-    logger.info({ call_id, transcript: text.slice(0, 60) }, 'Auto-demo paused — prospect speaking');
+    logger.info({ call_id, transcript: trimmed.slice(0, 60) }, 'Auto-demo paused — prospect speaking');
   }
 
   const snapshot = actor.getSnapshot();
@@ -225,10 +261,12 @@ async function handleTranscription(call, callback) {
     const t_claude_done = Date.now();
 
     const { action, response_text } = response;
+    const claudeSection = response.section || null;
 
     logger.info({
       call_id,
       action,
+      claudeSection,
       claude_latency_ms: t_claude_done - t_claude_start,
       total_orchestrator_ms: t_claude_done - t_received,
       transcript: text.slice(0, 80),
@@ -255,20 +293,21 @@ async function handleTranscription(call, callback) {
       logger.info({ call_id }, 'Auto-demo resumed after Q&A');
     }
 
-    // Dispatch browser command
+    // Navigate browser: use Claude's requested section if provided, otherwise current step
     const updatedSnapshot = actor.getSnapshot();
     const nextStep = getStep(updatedSnapshot.context.currentStep);
+    const navSection = claudeSection || nextStep.browser_action.section;
     browserExecuteAction({
       call_id,
       type: 0, // NAVIGATE
-      section: nextStep.browser_action.section,
+      section: navSection,
     });
 
     callback(null, {
       call_id,
       type: action,
       response_text,
-      browser_command: nextStep.browser_action,
+      browser_command: { ...nextStep.browser_action, section: navSection },
       demo_step: updatedSnapshot.context.currentStep,
     });
   } catch (err) {
