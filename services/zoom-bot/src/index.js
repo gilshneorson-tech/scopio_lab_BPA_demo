@@ -280,28 +280,30 @@ class ZoomSDKBot {
 
     ensureDir(SDK_AUDIO_DIR);
 
-    // Write SDK config
+    // Write SDK config file
     const configPath = '/tmp/zoom-config.toml';
-    const config = `
-client-id="${process.env.ZOOM_CLIENT_ID || ''}"
+    const joinUrl = `https://zoom.us/j/${meetingId}${password ? `?pwd=${password}` : ''}`;
+    const config = `client-id="${process.env.ZOOM_CLIENT_ID || ''}"
 client-secret="${process.env.ZOOM_CLIENT_SECRET || ''}"
-join-url=""
+join-url="${joinUrl}"
+display-name="Scopio Demo Agent"
 
 [RawAudio]
 file="${SDK_AUDIO_DIR}/meeting-audio.pcm"
 `;
     writeFileSync(configPath, config);
 
-    logger.info({ meetingId, callId: this.callId }, 'Starting Zoom SDK bot');
+    logger.info({ meetingId, joinUrl, callId: this.callId }, 'Starting Zoom SDK bot');
 
     // Spawn the C++ SDK process
     this.process = spawn(sdkBinary, [
       '--config', configPath,
-      '--join-url', `https://zoom.us/j/${meetingId}${password ? `?pwd=${password}` : ''}`,
+      'RawAudio',
     ], {
       env: {
         ...process.env,
         DISPLAY: ':99',
+        LD_LIBRARY_PATH: '/opt/zoom-sdk/lib/zoomsdk',
         QT_LOGGING_RULES: '*.debug=false;*.warning=false',
       },
       stdio: ['pipe', 'pipe', 'pipe'],
