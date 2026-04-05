@@ -26,8 +26,14 @@ RUN git clone --depth 1 https://github.com/zoom/meetingsdk-headless-linux-sample
 # Copy SDK binaries + headers (downloaded from Zoom marketplace)
 COPY services/zoom-bot/sdk/zoomsdk/ lib/zoomsdk/
 
-# Apply patches (auto-unmute after VoIP join)
+# Apply patches (auto-unmute + virtual mic for TTS playback)
 COPY services/zoom-bot/sdk-patches/Zoom.cpp src/Zoom.cpp
+COPY services/zoom-bot/sdk-patches/Zoom.h src/Zoom.h
+COPY services/zoom-bot/sdk-patches/ZoomSDKAudioSource.cpp src/raw_send/ZoomSDKAudioSource.cpp
+COPY services/zoom-bot/sdk-patches/ZoomSDKAudioSource.h src/raw_send/ZoomSDKAudioSource.h
+
+# Add audio source to CMake build
+RUN sed -i '/ZoomSDKVideoSource/a\\    src/raw_send/ZoomSDKAudioSource.cpp' CMakeLists.txt
 
 # Build
 RUN cmake -B build -S . --preset debug \

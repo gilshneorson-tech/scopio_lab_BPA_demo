@@ -302,6 +302,17 @@ SDKError Zoom::startRawRecording() {
         if (!m_audioHelper)
             return SDKERR_UNINITIALIZE;
 
+        // Register virtual mic for TTS audio playback into Zoom
+        if (!m_virtualMic) {
+            m_virtualMic = new ZoomSDKAudioSource();
+            m_virtualMic->setTTSFilePath("/tmp/zoom-audio/tts-output.pcm");
+        }
+        auto micErr = m_audioHelper->setExternalAudioSource(m_virtualMic);
+        if (hasError(micErr, "set virtual mic"))
+            Log::error("Failed to set virtual audio mic");
+        else
+            Log::info("virtual mic registered for TTS playback");
+
         if (!m_audioSource) {
             auto mixedAudio = !m_config.separateParticipantAudio();
             auto transcribe = m_config.transcribe();

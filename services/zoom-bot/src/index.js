@@ -483,20 +483,20 @@ file="meeting-audio.pcm"
           ensureDir(AUDIO_OUTPUT_DIR);
           writeFileSync(pcmFile, combined);
 
-          // Play into Zoom via PulseAudio
+          // Write TTS audio to the file the C++ virtual mic watches
+          // The SDK's ZoomSDKAudioSource reads this and sends via pSender->send()
           try {
-            logger.info({ bytes: combined.length, pcmFile }, 'Playing TTS into Zoom via PulseAudio');
-            execSync(
-              `paplay --raw --rate=16000 --channels=1 --format=s16le -d VirtualMic "${pcmFile}"`,
-              {
-                stdio: 'pipe',
-                timeout: 30000,
-                env: { ...process.env, PULSE_SERVER: 'unix:/var/run/pulse/native' },
-              },
-            );
+            const ttsFile = '/tmp/zoom-audio/tts-output.pcm';
+            ensureDir('/tmp/zoom-audio');
+            writeFileSync(ttsFile, combined);
+            logger.info({ bytes: combined.length, ttsFile }, 'TTS audio written for SDK virtual mic');
+
+            // Wait for approximate playback duration (audio length / sample rate)
+            const durationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
+            await new Promise(r => setTimeout(r, durationMs + 500));
             logger.info('TTS playback complete');
           } catch (err) {
-            logger.error({ err: err.message }, 'PulseAudio playback failed');
+            logger.error({ err: err.message }, 'TTS write failed');
           }
         }
 
