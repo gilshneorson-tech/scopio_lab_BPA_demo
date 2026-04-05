@@ -38,6 +38,8 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // Active sessions: callId → xstate actor
 const sessions = new Map();
+// Active auto-demos: callId → { running, paused }
+const autoDemos = new Map();
 
 // gRPC clients (lazy-initialized)
 let claudeClient, browserClient, demoBrowserClient, ttsClient, persistenceClient;
@@ -162,6 +164,9 @@ function loadOrchestratorProto() {
   return grpc.loadPackageDefinition(packageDef);
 }
 
+// Detect brief interrupts: prospect wants to ask a question but hasn't asked it yet
+const INTERRUPT_PATTERNS = /\b(i have a question|can i ask|excuse me|hold on|wait|one moment|quick question|before you move on|sorry to interrupt|may i|can i jump in)\b/i;
+
 async function handleTranscription(call, callback) {
   const { call_id, text, is_final } = call.request;
   const t_received = Date.now();
@@ -175,9 +180,37 @@ async function handleTranscription(call, callback) {
     return callback(new Error(`No session for call_id: ${call_id}`));
   }
 
+  // Pause auto-demo whenever prospect speaks (they may be interrupting)
+  const demoState = autoDemos.get(call_id);
+  if (demoState) {
+    demoState.paused = true;
+    logger.info({ call_id, transcript: text.slice(0, 60) }, 'Auto-demo paused — prospect speaking');
+  }
+
   const snapshot = actor.getSnapshot();
   const ctx = snapshot.context;
   const step = getStep(ctx.currentStep);
+
+  // Check if this is a brief interrupt (not the actual question yet)
+  const isInterrupt = INTERRUPT_PATTERNS.test(text) && text.split(/\s+/).length < 12;
+
+  if (isInterrupt) {
+    logger.info({ call_id, text }, 'Interrupt detected — acknowledging, waiting for full question');
+    const ackText = 'Of course, go ahead.';
+    appendHistory(call_id, { role: 'prospect', text, timestamp: Date.now() });
+    appendHistory(call_id, { role: 'agent', text: ackText, timestamp: Date.now() });
+
+    // Demo stays paused — will resume when the actual question is answered
+    callback(null, {
+      call_id,
+      type: 'ANSWER',
+      response_text: ackText,
+      browser_command: step.browser_action,
+      demo_step: ctx.currentStep,
+    });
+    return;
+  }
+
   const history = await getHistory(call_id, 5);
 
   try {
@@ -216,6 +249,12 @@ async function handleTranscription(call, callback) {
     appendHistory(call_id, { role: 'prospect', text, timestamp: Date.now() });
     appendHistory(call_id, { role: 'agent', text: response_text, timestamp: Date.now() });
 
+    // Resume auto-demo after answering
+    if (demoState) {
+      demoState.paused = false;
+      logger.info({ call_id }, 'Auto-demo resumed after Q&A');
+    }
+
     // Dispatch browser command
     const updatedSnapshot = actor.getSnapshot();
     const nextStep = getStep(updatedSnapshot.context.currentStep);
@@ -234,6 +273,8 @@ async function handleTranscription(call, callback) {
     });
   } catch (err) {
     logger.error({ err, call_id }, 'Claude decision failed');
+    // Resume demo even on error so it doesn't stay stuck
+    if (demoState) demoState.paused = false;
     callback(null, {
       call_id,
       type: 'WAIT',
@@ -452,9 +493,6 @@ async function startHTTP() {
 
   // ─── Auto-Demo: run full 10-step demo autonomously ───
 
-  // Track running auto-demos so we can pause/stop them
-  const autoDemos = new Map(); // callId → { running, paused }
-
   app.post('/api/sessions/:callId/auto-demo', async (req) => {
     const { callId } = req.params;
     const actor = sessions.get(callId);
@@ -505,7 +543,6 @@ async function startHTTP() {
             model: process.env.TTS_MODEL || 'eleven_turbo_v2',
           });
 
-          let speechDurationMs = 0;
           if (ttsResult.audio_chunks.length > 0) {
             // Write TTS audio for the zoom-bot virtual mic to pick up
             const combined = Buffer.concat(ttsResult.audio_chunks);
@@ -517,22 +554,14 @@ async function startHTTP() {
               logger.warn({ err: err.message }, 'Failed to write TTS file (zoom-bot will handle)');
             }
 
-            // Wait for speech duration (audio bytes / 2 bytes per sample / 16000 Hz)
-            speechDurationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
-            await new Promise(r => setTimeout(r, speechDurationMs + 1000));
+            // Wait for speech to finish playing, then a short breath before next step
+            const speechDurationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
+            await new Promise(r => setTimeout(r, speechDurationMs + 2000));
           }
 
-          // Wait for remaining step duration after speech (avoid double-waiting)
-          // Pause if prospect is speaking
-          const remainingMs = Math.max(step.duration_sec * 1000 - speechDurationMs - 1000, 2000);
-          const waitEnd = Date.now() + remainingMs;
-          while (Date.now() < waitEnd && demoState.running) {
-            if (demoState.paused) {
-              // Wait while paused (prospect is asking a question)
-              await new Promise(r => setTimeout(r, 500));
-              continue;
-            }
-            await new Promise(r => setTimeout(r, 500));
+          // Pause loop: hold here while prospect is speaking / asking a question
+          while (demoState.paused && demoState.running) {
+            await new Promise(r => setTimeout(r, 300));
           }
 
           if (!demoState.running) break;
