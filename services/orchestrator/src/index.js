@@ -347,9 +347,22 @@ function handleStartSession(call, callback) {
   const { zoom_meeting_id, zoom_meeting_password, prospect_name } = call.request;
   const callId = uuidv4();
 
+  // Clean up any stale sessions and auto-demos from previous connections
+  for (const [oldCallId, oldDemo] of autoDemos) {
+    oldDemo.running = false;
+    logger.info({ oldCallId }, 'Stopped stale auto-demo');
+  }
+  autoDemos.clear();
+  for (const [oldCallId, oldActor] of sessions) {
+    try { oldActor.send({ type: 'CLOSE' }); } catch {}
+    logger.info({ oldCallId }, 'Closed stale session');
+  }
+  sessions.clear();
+  recentTranscripts.clear();
+
   createSession(callId, prospect_name);
 
-  logger.info({ callId, zoom_meeting_id, prospect_name }, 'session started');
+  logger.info({ callId, zoom_meeting_id, prospect_name }, 'session started (clean slate)');
 
   callback(null, {
     call_id: callId,
@@ -593,14 +606,21 @@ async function startHTTP() {
               logger.warn({ err: err.message }, 'Failed to write TTS file (zoom-bot will handle)');
             }
 
-            // Wait for speech to finish playing, then a short breath before next step
+            // Wait for speech in small intervals so we can pause on interrupts
             const speechDurationMs = Math.ceil((combined.length / 2) / 16000 * 1000);
-            await new Promise(r => setTimeout(r, speechDurationMs + 2000));
-          }
-
-          // Pause loop: hold here while prospect is speaking / asking a question
-          while (demoState.paused && demoState.running) {
-            await new Promise(r => setTimeout(r, 300));
+            const speechEnd = Date.now() + speechDurationMs + 2000;
+            while (Date.now() < speechEnd && demoState.running) {
+              if (demoState.paused) {
+                logger.info({ callId, step: stepIdx }, 'Narration interrupted — pausing');
+                // Hold until prospect finishes speaking
+                while (demoState.paused && demoState.running) {
+                  await new Promise(r => setTimeout(r, 300));
+                }
+                logger.info({ callId, step: stepIdx }, 'Resuming after interrupt');
+                break; // Move to next step after Q&A
+              }
+              await new Promise(r => setTimeout(r, 300));
+            }
           }
 
           if (!demoState.running) break;
