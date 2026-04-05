@@ -1,0 +1,17 @@
+--- a/src/Zoom.cpp
++++ b/src/Zoom.cpp
+@@ -275,6 +275,14 @@
+             if (hasError(voipErr, "join VoIP")) {
+                 Log::error("Failed to join VoIP audio");
+             }
++
++            // Auto-unmute the bot so TTS audio can be heard by participants
++            sleep(1); // Wait for VoIP to fully initialize
++            auto unmuteErr = audioController->UnMuteAudio(0);
++            if (hasError(unmuteErr, "unmute audio"))
++                Log::error("Failed to unmute audio");
++            else
++                Log::info("unmute audio");
+         }
+
+         m_audioHelper = GetAudioRawdataHelper();
