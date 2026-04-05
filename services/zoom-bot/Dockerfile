@@ -31,6 +31,7 @@ COPY services/zoom-bot/sdk-patches/Zoom.cpp src/Zoom.cpp
 COPY services/zoom-bot/sdk-patches/Zoom.h src/Zoom.h
 COPY services/zoom-bot/sdk-patches/ZoomSDKAudioSource.cpp src/raw_send/ZoomSDKAudioSource.cpp
 COPY services/zoom-bot/sdk-patches/ZoomSDKAudioSource.h src/raw_send/ZoomSDKAudioSource.h
+COPY services/zoom-bot/sdk-patches/MeetingShareEvent.h src/events/MeetingShareEvent.h
 
 # Add audio source to CMake build
 RUN sed -i '/ZoomSDKVideoSource/a\\    src/raw_send/ZoomSDKAudioSource.cpp' CMakeLists.txt
@@ -49,7 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1 \
     && node --version && npm --version
 
-# Install runtime dependencies for SDK + audio
+# Install runtime dependencies for SDK + audio + Playwright/Chromium
 RUN apt-get install -y --no-install-recommends \
     pulseaudio pulseaudio-utils dbus \
     xvfb xauth \
@@ -62,6 +63,9 @@ RUN apt-get install -y --no-install-recommends \
     libx11-6 libx11-xcb1 libxcb-image0 libxcb-keysyms1 \
     libxcb-randr0 libxcb-shape0 libxcb-shm0 libxcb-xfixes0 \
     libxcb-xtest0 libxfixes3 libssl3t64 \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxcomposite1 libxdamage1 libxrandr2 libpango-1.0-0 libcairo2 \
+    libxshmfence1 fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built SDK binary + shared libraries
@@ -73,12 +77,13 @@ ENV SDK_BUILD_DIR=/opt/zoom-sdk/build
 
 WORKDIR /app
 
-# Install Node.js dependencies
+# Install Node.js dependencies + Playwright
 COPY proto/ ./proto/
 COPY services/zoom-bot/package.json ./services/zoom-bot/
-RUN cd services/zoom-bot && npm install --production
+RUN cd services/zoom-bot && npm install --production && npx playwright install chromium
 
 COPY services/zoom-bot/src/ ./services/zoom-bot/src/
+COPY config/test-bma.html ./config/test-bma.html
 
 WORKDIR /app/services/zoom-bot
 

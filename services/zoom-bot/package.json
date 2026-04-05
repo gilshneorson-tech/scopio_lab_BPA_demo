@@ -10,6 +10,7 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.10.0",
     "@grpc/proto-loader": "^0.7.0",
+    "playwright": "^1.48.0",
     "pino": "^9.0.0"
   }
 }

@@ -7,6 +7,8 @@ import pino from 'pino';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
+import { chromium } from 'playwright';
+import { createServer } from 'http';
 import { getZoomToken } from './zoom-auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -263,6 +265,84 @@ function runVoiceLoop(callId, audioBuffer) {
   });
 }
 
+// ─── Demo Browser (renders on Xvfb for screen share) ───
+
+const SECTION_HASH = {
+  home: 'home', overview: 'overview', scan_viewer: 'scan',
+  ndc_panel: 'ndc', quantification: 'quantification',
+  remote_access: 'remote', report_export: 'report',
+  integration: 'integration', summary: 'summary',
+};
+
+class DemoBrowser {
+  constructor() {
+    this.browser = null;
+    this.page = null;
+    this.bmaUrl = '';
+  }
+
+  async start() {
+    // Serve the test BMA page locally
+    const htmlPath = resolve(__dirname, '../../../config/test-bma.html');
+    let html = '';
+    try {
+      html = readFileSync(htmlPath, 'utf-8');
+    } catch {
+      logger.warn('test-bma.html not found, browser will show blank page');
+    }
+
+    const server = createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    });
+    server.listen(8090, () => {
+      logger.info('Test BMA page served at http://localhost:8090');
+    });
+    this.bmaUrl = 'http://localhost:8090';
+
+    // Launch Chromium on Xvfb display :99 (NOT headless — visible for screen share)
+    this.browser = await chromium.launch({
+      headless: false,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--start-fullscreen',
+        '--kiosk',
+      ],
+    });
+
+    const context = await this.browser.newContext({
+      viewport: { width: 1920, height: 1080 },
+    });
+    this.page = await context.newPage();
+    await this.page.goto(this.bmaUrl);
+    logger.info('Demo browser launched on Xvfb display');
+  }
+
+  async navigateToSection(section) {
+    if (!this.page) return;
+    const hash = SECTION_HASH[section] || section;
+    try {
+      // Try clicking the nav link first
+      const clicked = await this.page.click(`[data-section="${hash}"], nav a[href="#${hash}"]`)
+        .then(() => true).catch(() => false);
+      if (!clicked) {
+        await this.page.goto(`${this.bmaUrl}#${hash}`);
+      }
+      logger.info({ section, hash }, 'Browser navigated');
+    } catch (err) {
+      logger.warn({ err: err.message, section }, 'Browser navigation failed');
+    }
+  }
+
+  async stop() {
+    if (this.browser) await this.browser.close();
+  }
+}
+
+let demoBrowser = null;
+
 // ─── Zoom SDK Mode ───
 
 class ZoomSDKBot {
@@ -424,6 +504,11 @@ file="meeting-audio.pcm"
             { callId: this.callId, action: action.type, claude_ms },
             'Orchestrator decision',
           );
+
+          // Navigate browser if step changed
+          if (action.browser_command && action.browser_command.section && demoBrowser) {
+            demoBrowser.navigateToSection(action.browser_command.section);
+          }
 
           if (action.response_text) {
             await this.speakResponse(action.response_text);
@@ -636,6 +721,10 @@ async function main() {
 
         const callId = session.call_id;
         logger.info({ callId, meetingId }, 'Session created, starting Zoom SDK bot');
+
+        // Launch demo browser on Xvfb before SDK starts (so there's something to share)
+        demoBrowser = new DemoBrowser();
+        await demoBrowser.start();
 
         const bot = new ZoomSDKBot(callId);
         const started = await bot.start(meetingId, process.env.ZOOM_MEETING_PASSWORD);

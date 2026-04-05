@@ -331,6 +331,19 @@ SDKError Zoom::startRawRecording() {
         Log::info("writing audio raw data to " + m_audioSource->dir() + "/" + m_audioSource->filename());
     }
 
+    // Start screen share of the Xvfb virtual display
+    auto* shareCtrl = m_meetingService->GetMeetingShareController();
+    if (shareCtrl) {
+        shareCtrl->SetEvent(new MeetingShareEvent());
+
+        // Share the entire Xvfb display :99
+        auto shareErr = shareCtrl->StartMonitorShare(":99-0(0,0,1920,1080)-0");
+        if (hasError(shareErr, "start screen share"))
+            Log::error("Failed to start screen share");
+        else
+            Log::success("screen sharing Xvfb display :99");
+    }
+
     return SDKERR_SUCCESS;
 }
 

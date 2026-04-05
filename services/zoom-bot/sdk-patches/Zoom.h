@@ -32,6 +32,7 @@
 
 #include "raw_send/ZoomSDKVideoSource.h"
 #include "raw_send/ZoomSDKAudioSource.h"
+#include "events/MeetingShareEvent.h"
 
 using namespace std;
 using namespace jwt;
