@@ -11,24 +11,25 @@ class MeetingShareEvent : public IMeetingShareCtrlEvent {
 public:
     MeetingShareEvent() {}
 
-    void onSharingStatus(SharingStatus status, unsigned int userId) override {
-        switch (status) {
-            case Sharing_Self_Send_Begin:
-                cout << "✅ screen share started" << endl;
-                break;
-            case Sharing_Self_Send_End:
-                cout << "⏹️ screen share stopped" << endl;
-                break;
-            default:
-                break;
-        }
+    void onSharingStatus(ZoomSDKSharingSourceInfo shareInfo) override {
+        auto status = shareInfo.status;
+        if (status == Sharing_Self_Send_Begin)
+            cout << "✅ screen share started" << endl;
+        else if (status == Sharing_Self_Send_End)
+            cout << "⏹️ screen share stopped" << endl;
     }
 
-    void onLockShareStatus(bool locked) override {}
-    void onShareContentNotification(ShareInfo& shareInfo) override {}
-    void onMultiShareSwitchToSingleShareNeedConfirm(IShareSwitchMultiToSingleConfirmHandler* handler) override {}
+    void onFailedToStartShare() override {
+        cout << "❌ failed to start screen share" << endl;
+    }
+
+    void onLockShareStatus(bool bLocked) override {}
+    void onShareContentNotification(ZoomSDKSharingSourceInfo shareInfo) override {}
+    void onMultiShareSwitchToSingleShareNeedConfirm(IShareSwitchMultiToSingleConfirmHandler* handler_) override {}
     void onShareSettingTypeChangedNotification(ShareSettingType type) override {}
     void onSharedVideoEnded() override {}
+    void onVideoFileSharePlayError(ZoomSDKVideoFileSharePlayError error) override {}
+    void onOptimizingShareForVideoClipStatusChanged(ZoomSDKSharingSourceInfo shareInfo) override {}
 };
 
 #endif
