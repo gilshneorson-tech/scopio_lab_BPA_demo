@@ -487,7 +487,7 @@ file="meeting-audio.pcm"
           try {
             logger.info({ bytes: combined.length, pcmFile }, 'Playing TTS into Zoom via PulseAudio');
             execSync(
-              `paplay --raw --rate=16000 --channels=1 --format=s16le --server=unix:/var/run/pulse/native "${pcmFile}"`,
+              `paplay --raw --rate=16000 --channels=1 --format=s16le -d VirtualMic "${pcmFile}"`,
               {
                 stdio: 'pipe',
                 timeout: 30000,

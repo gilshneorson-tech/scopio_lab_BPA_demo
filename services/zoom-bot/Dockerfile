@@ -85,8 +85,10 @@ CMD bash -c "\
     adduser root pulse-access 2>/dev/null; \
     pulseaudio -D --exit-idle-time=-1 --system --disallow-exit 2>/dev/null; \
     export PULSE_SERVER=unix:/var/run/pulse/native; \
-    pactl load-module module-null-sink sink_name=SpeakerOutput 2>/dev/null; \
-    pactl set-default-sink SpeakerOutput 2>/dev/null; \
+    pactl load-module module-null-sink sink_name=SpeakerOutput sink_properties=device.description=VirtualSpeaker 2>/dev/null; \
+    pactl load-module module-null-sink sink_name=VirtualMic sink_properties=device.description=VirtualMic 2>/dev/null; \
+    pactl load-module module-loopback source=VirtualMic.monitor sink=SpeakerOutput latency_msec=20 2>/dev/null; \
+    pactl set-default-sink VirtualMic 2>/dev/null; \
     pactl set-default-source SpeakerOutput.monitor 2>/dev/null; \
     echo '[General]' > ~/.config/zoomus.conf; \
     echo 'system.audio.type=default' >> ~/.config/zoomus.conf; \
