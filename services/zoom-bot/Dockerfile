@@ -20,11 +20,11 @@ RUN git clone --depth 1 https://github.com/Microsoft/vcpkg.git /opt/vcpkg \
     && ln -s /opt/vcpkg/vcpkg /usr/local/bin/vcpkg \
     && vcpkg install vcpkg-cmake
 
-# Clone Zoom SDK sample
+# Clone Zoom SDK sample wrapper code
 RUN git clone --depth 1 https://github.com/zoom/meetingsdk-headless-linux-sample.git .
 
-# Rename shared library (SDK requirement)
-RUN cp lib/zoomsdk/libmeetingsdk.so lib/zoomsdk/libmeetingsdk.so.1 || true
+# Copy SDK binaries + headers (downloaded from Zoom marketplace)
+COPY services/zoom-bot/sdk/zoomsdk/ lib/zoomsdk/
 
 # Build
 RUN cmake -B build -S . --preset debug \
