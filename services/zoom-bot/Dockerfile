@@ -82,7 +82,9 @@ CMD bash -c "\
     dbus-daemon --config-file=/usr/share/dbus-1/system.conf --print-address 2>/dev/null; \
     rm -rf /var/run/pulse /var/lib/pulse /root/.config/pulse/; \
     mkdir -p ~/.config/pulse/ && cp -r /etc/pulse/* ~/.config/pulse/ 2>/dev/null; \
+    adduser root pulse-access 2>/dev/null; \
     pulseaudio -D --exit-idle-time=-1 --system --disallow-exit 2>/dev/null; \
+    export PULSE_SERVER=unix:/var/run/pulse/native; \
     pactl load-module module-null-sink sink_name=SpeakerOutput 2>/dev/null; \
     pactl set-default-sink SpeakerOutput 2>/dev/null; \
     pactl set-default-source SpeakerOutput.monitor 2>/dev/null; \
