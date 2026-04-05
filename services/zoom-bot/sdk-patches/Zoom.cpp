@@ -151,6 +151,7 @@ SDKError Zoom::join() {
         if (!audioSettings) return SDKERR_INTERNAL_ERROR;
 
         audioSettings->EnableAutoJoinAudio(true);
+        audioSettings->EnableAlwaysMuteMicWhenJoinVoip(false);
     }
 
     return m_meetingService->Join(joinParam);
@@ -269,6 +270,22 @@ SDKError Zoom::startRawRecording() {
     }
 
     if (m_config.useRawAudio()) {
+        m_audioHelper = GetAudioRawdataHelper();
+        if (!m_audioHelper)
+            return SDKERR_UNINITIALIZE;
+
+        // Register virtual mic BEFORE joining VoIP so callbacks fire
+        if (!m_virtualMic) {
+            m_virtualMic = new ZoomSDKAudioSource();
+            m_virtualMic->setTTSFilePath("/tmp/zoom-audio/tts-output.pcm");
+        }
+        auto micErr = m_audioHelper->setExternalAudioSource(m_virtualMic);
+        if (hasError(micErr, "set virtual mic"))
+            Log::error("Failed to set virtual audio mic");
+        else
+            Log::info("virtual mic registered for TTS playback");
+
+        // Now join VoIP with the virtual mic active
         auto* audioController = m_meetingService->GetMeetingAudioController();
         if (audioController) {
             auto voipErr = audioController->JoinVoip();
@@ -276,7 +293,7 @@ SDKError Zoom::startRawRecording() {
                 Log::error("Failed to join VoIP audio");
             }
 
-            // Auto-unmute so TTS audio is heard by participants
+            // Auto-unmute
             sleep(2);
             auto* partCtl = m_meetingService->GetMeetingParticipantsController();
             if (partCtl) {
@@ -297,21 +314,6 @@ SDKError Zoom::startRawRecording() {
                 }
             }
         }
-
-        m_audioHelper = GetAudioRawdataHelper();
-        if (!m_audioHelper)
-            return SDKERR_UNINITIALIZE;
-
-        // Register virtual mic for TTS audio playback into Zoom
-        if (!m_virtualMic) {
-            m_virtualMic = new ZoomSDKAudioSource();
-            m_virtualMic->setTTSFilePath("/tmp/zoom-audio/tts-output.pcm");
-        }
-        auto micErr = m_audioHelper->setExternalAudioSource(m_virtualMic);
-        if (hasError(micErr, "set virtual mic"))
-            Log::error("Failed to set virtual audio mic");
-        else
-            Log::info("virtual mic registered for TTS playback");
 
         if (!m_audioSource) {
             auto mixedAudio = !m_config.separateParticipantAudio();
