@@ -469,12 +469,10 @@ async function main() {
   if (meetingId) {
     logger.info({ meetingId }, 'Starting in Zoom SDK mode');
 
-    // Verify Zoom credentials
-    try {
-      const token = await getZoomToken();
-      logger.info('Zoom OAuth token obtained');
-    } catch (err) {
-      logger.error({ err: err.message }, 'Zoom auth failed');
+    // Meeting SDK handles auth internally via JWT from Client ID + Secret
+    // No OAuth token needed — the C++ binary generates its own JWT
+    if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET) {
+      logger.error('ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET required for SDK mode');
       process.exit(1);
     }
 
