@@ -7,13 +7,13 @@
 | Real BMA UI selectors in browser-controller | Need Scopio demo environment URL + credentials |
 | Branded agent voice | Decide: use ElevenLabs default (Rachel) or create custom Scopio voice |
 
-## High Priority — Fix Live Zoom Pipeline
+## High Priority — Polish Live Demo
 
 | Item | Status | Notes |
 |---|---|---|
-| Fix STT transcription quality | Not started | File polling (200ms) produces fragments. Switch to SDK socket mode for real-time streaming |
-| TTS audio playback into Zoom | Not started | Audio is generated but not sent back to meeting. Need SDK raw audio send |
-| browser-controller unhealthy on GCE | Not started | Chromium init issue in Docker, non-blocking for voice |
+| Sync browser navigation with narration | Not started | Screen share shows BMA page but nav doesn't advance in step with auto-demo. Zoom-bot's local Playwright needs to navigate on each step. |
+| Reduce STT echo during TTS playback | Partial | isSpeaking flag helps but bot still picks up fragments of its own voice |
+| Fix MeetingFailCode 8 on meeting switch | Workaround | Full container recreate (down+up) fixes stale SDK state. Don't use restart. |
 
 ## Phase 3 — GCP Deployment (DONE 2026-04-04)
 
@@ -28,7 +28,12 @@
 | Zoom Meeting SDK C++ binary in Docker | DONE |
 | Bot joins live Zoom calls | DONE |
 | Audio capture from Zoom meeting | DONE |
-| Voice pipeline on live call (STT → Claude → TTS) | DONE (quality needs improvement) |
+| Voice pipeline on live call (STT → Claude → TTS) | DONE |
+| Screen share (Xvfb display via StartMonitorShare) | DONE |
+| C++ virtual mic (IZoomSDKVirtualAudioMicEvent) | DONE |
+| Auto-demo (10-step scripted narration) | DONE |
+| Multi-language scripts (en/fr) | DONE (French voice quality insufficient, English only for now) |
+| Playwright browser on Xvfb for screen share content | DONE |
 
 ## Phase 4 — Hardening
 

@@ -194,5 +194,5 @@ Real-time streaming STT will return results while prospect speaks, reducing perc
 |---|---|---|
 | 1 | Manual demo flow, browser nav, Claude Q&A, dashboard | DONE (2026-04-04) |
 | 2 | Voice pipeline: STT → Claude → TTS, latency tracking | DONE (2026-04-04) |
-| 3 | GCP deployment, Zoom SDK, Firestore, Docker Compose | DONE (2026-04-04) — bot joins live Zoom, captures audio, STT→Claude→TTS works. Fix STT quality + TTS playback next. |
+| 3 | GCP deployment, Zoom SDK, Firestore, Docker Compose | DONE (2026-04-05) — bot joins Zoom, screen shares BMA page, auto-runs 10-step demo with Matilda voice, answers questions via Claude. Sync browser nav with narration next. |
 | 4 | Error recovery, load testing, GKE migration | Backlog |
