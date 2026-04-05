@@ -35,12 +35,10 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Node.js 20
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
-    && apt-get update && apt-get install -y --no-install-recommends nodejs npm
+# Install Node.js 20 from official binary
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+    && curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1 \
+    && node --version && npm --version
 
 # Install runtime dependencies for SDK + audio
 RUN apt-get install -y --no-install-recommends \
