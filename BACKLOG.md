@@ -5,19 +5,30 @@
 | Item | Blocker |
 |---|---|
 | Real BMA UI selectors in browser-controller | Need Scopio demo environment URL + credentials |
-| Zoom SDK audio/video integration | Need Linux VM (GCP deploy) — SDK doesn't run on macOS |
 | Branded agent voice | Decide: use ElevenLabs default (Rachel) or create custom Scopio voice |
 
-## Phase 3 — GCP Deployment (next)
+## High Priority — Fix Live Zoom Pipeline
+
+| Item | Status | Notes |
+|---|---|---|
+| Fix STT transcription quality | Not started | File polling (200ms) produces fragments. Switch to SDK socket mode for real-time streaming |
+| TTS audio playback into Zoom | Not started | Audio is generated but not sent back to meeting. Need SDK raw audio send |
+| browser-controller unhealthy on GCE | Not started | Chromium init issue in Docker, non-blocking for voice |
+
+## Phase 3 — GCP Deployment (DONE 2026-04-04)
 
 | Item | Status |
 |---|---|
-| Deploy to GCP n2-standard-8 via Docker Compose | Planned |
-| Secret Manager for all API keys | Planned |
-| Firestore persistence (call logging) | Code exists, needs GCP wiring |
-| Xvfb + PulseAudio in Docker (not as separate services) | Planned |
-| Production Dockerfiles (non-root, health checks) | Planned |
-| Firewall rules (port 3000 open, gRPC internal) | Planned |
+| Deploy to GCP n2-standard-8 via Docker Compose | DONE |
+| Secret Manager for all API keys | DONE |
+| Firestore database created | DONE |
+| Xvfb + PulseAudio in Docker | DONE |
+| Production Dockerfiles with health checks | DONE |
+| Firewall rules (port 3000 open) | DONE |
+| Zoom Meeting SDK C++ binary in Docker | DONE |
+| Bot joins live Zoom calls | DONE |
+| Audio capture from Zoom meeting | DONE |
+| Voice pipeline on live call (STT → Claude → TTS) | DONE (quality needs improvement) |
 
 ## Phase 4 — Hardening
 
