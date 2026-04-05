@@ -164,11 +164,11 @@ function loadOrchestratorProto() {
   return grpc.loadPackageDefinition(packageDef);
 }
 
-// Detect brief interrupts: prospect wants to ask a question but hasn't asked it yet
-const INTERRUPT_PATTERNS = /\b(i have a question|can i ask|excuse me|hold on|wait|one moment|quick question|before you move on|sorry to interrupt|may i|can i jump in)\b/i;
+// Detect brief interrupts: prospect wants attention but hasn't asked the question yet
+const INTERRUPT_PATTERNS = /\b(i have a question|can i ask|excuse me|hold on|wait|one moment|quick question|before you move on|sorry to interrupt|may i|can i jump in|alex|hey alex|hello alex)\b/i;
 
-// Filler / noise that should never pause the demo or call Claude
-const FILLER_PATTERNS = /^[\s.,!?]*(?:it|the|a|um|uh|hmm|ok|okay|got it|sure|right|yes|yeah|yep|interesting|cool|great|nice|thanks|thank you|hello|hi|hey|hey alex|alex|hello hello|hello hello hello)[\s.,!?]*$/i;
+// Filler / noise that should never pause the demo or call Claude (STT echo + agreement)
+const FILLER_PATTERNS = /^[\s.,!?]*(?:it|the|a|um|uh|hmm|ok|okay|got it|sure|right|yes|yeah|yep|interesting|cool|great|nice|thanks|thank you|hello|hi|hey|hello hello)[\s.,!?]*$/i;
 
 // STT deduplication: track recent transcripts per call to avoid double-processing
 const recentTranscripts = new Map(); // call_id → { text, timestamp }
