@@ -1,0 +1,14 @@
+{
+  "name": "@scopio/meeting-launcher",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "fastify": "^4.28.0",
+    "@fastify/static": "^7.0.0",
+    "@fastify/basic-auth": "^5.1.0"
+  },
+  "private": true
+}

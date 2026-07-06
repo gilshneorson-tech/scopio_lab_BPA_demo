@@ -31,6 +31,8 @@ Prospect speaks (Zoom call)
 | `claude-wrapper` | Node.js 20, Anthropic SDK | 50052 (gRPC) | AI reasoning + prompt management |
 | `persistence` | Node.js 20, Firestore | 50055 (gRPC) | Call logs, transcripts, Q&A pairs |
 | `redis` | Redis 7 | 6379 | Session state, conversation history (2hr TTL) |
+| `meet-bot` | Node.js 20, Playwright | 50057 (gRPC, same DemoBrowser contract as zoom-bot) | Joins Google Meet, captures/plays audio via PulseAudio, tab-shares demo page (`--profile meet`) |
+| `meeting-launcher` | Node.js 20, Fastify | 8080 (HTTP) | Operator web UI: edit .env, start/stop bot containers via Docker socket |
 
 ## Inter-Service Communication
 
@@ -177,7 +179,8 @@ STT:            Google Cloud Speech-to-Text API
 | 50054 | TTS service gRPC | Internal |
 | 50055 | Persistence gRPC | Internal |
 | 50056 | STT service gRPC | Internal |
-| 50057 | zoom-bot DemoBrowser gRPC | Internal (browser nav + PlayAudio/StopAudio) |
+| 50057 | zoom-bot OR meet-bot DemoBrowser gRPC | Internal (browser nav + PlayAudio/StopAudio); orchestrator picks via DEMO_BROWSER_GRPC_ADDR |
+| 8080 | meeting-launcher web UI | Operator-facing (basic auth) |
 
 Ports 8001-8007 reserved (video automation pipeline). Port 8080 reserved (Cloud Run).
 

@@ -103,10 +103,7 @@ SDKError Zoom::join() {
         return err;
     }
 
-    if (password.empty()) {
-        Log::error("Meeting Password cannot be blank");
-        return err;
-    }
+    // Password is optional — some meetings don't require one
 
     if (displayName.empty()) {
         Log::error("Display Name cannot be blank");
@@ -115,7 +112,7 @@ SDKError Zoom::join() {
 
     auto meetingNumber = stoull(mid);
     auto userName = displayName.c_str();
-    auto psw = password.c_str();
+    auto psw = password.empty() ? nullptr : password.c_str();
 
     JoinParam joinParam;
     joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;

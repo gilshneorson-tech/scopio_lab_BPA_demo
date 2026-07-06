@@ -66,7 +66,21 @@ const sessions = new Map();
 const autoDemos = new Map();
 
 // Transcript classification (filler/dedup/interrupt/echo) — see transcript-policy.js
-const gate = createTranscriptGate({ agentName: AGENT_NAME });
+const gateOptions = { agentName: AGENT_NAME };
+if (process.env.MIN_CONFIDENCE) {
+  const floor = parseFloat(process.env.MIN_CONFIDENCE);
+  if (!Number.isNaN(floor)) gateOptions.minConfidence = floor;
+}
+const gate = createTranscriptGate(gateOptions);
+
+// After answering, invite a follow-up and hold the pause a little longer so
+// the prospect can take the offer before narration resumes
+const ANSWER_FOLLOWUP_SUFFIX = {
+  en: ' Did that answer your question?',
+  fr: ' Est-ce que cela répond à votre question ?',
+};
+const ANSWER_FOLLOWUP_WAIT_MS = 5000;
+const NON_ANSWER_RESUME_EXTRA_MS = 3000;
 
 // gRPC clients (lazy-initialized)
 let claudeClient, browserClient, demoBrowserClient, ttsClient, persistenceClient;
@@ -467,26 +481,35 @@ async function handleTranscription(call, callback) {
       }
     }
 
+    // Mid-demo answers invite a follow-up question before narration resumes
+    let finalResponseText = response_text;
+    if (action === 'ANSWER' && response_text && demoState && demoState.running) {
+      finalResponseText =
+        response_text + (ANSWER_FOLLOWUP_SUFFIX[DEMO_LANGUAGE] || ANSWER_FOLLOWUP_SUFFIX.en);
+    }
+
     // Record exchange
     recordProspectLine(call_id, trimmed);
-    if (response_text) {
-      recordAgentLine(call_id, response_text);
+    if (finalResponseText) {
+      recordAgentLine(call_id, finalResponseText);
       if (action === 'ANSWER') {
-        persistQA(call_id, trimmed, response_text, ctx.currentStep);
+        persistQA(call_id, trimmed, finalResponseText, ctx.currentStep);
       }
     }
 
-    // Resume narration after the answer has (approximately) played out.
-    // zoom-bot serializes all playback, so an early resume cannot talk over
-    // the answer — narration just queues behind it.
+    // Resume narration after the answer has (approximately) played out, plus
+    // a grace window for follow-up questions. zoom-bot serializes all
+    // playback, so an early resume cannot talk over the answer — narration
+    // just queues behind it.
     if (demoState && demoState.running) {
-      const estimatedSpeechMs = Math.max((response_text || '').length * 60, 2000);
+      const estimatedSpeechMs = Math.max((finalResponseText || '').length * 60, 2000);
+      const followUpWaitMs = action === 'ANSWER' ? ANSWER_FOLLOWUP_WAIT_MS : NON_ANSWER_RESUME_EXTRA_MS;
       setTimeout(() => {
         if (demoState.paused) {
           resumeDemo(demoState);
           logger.info({ call_id }, 'Auto-demo resumed after Q&A');
         }
-      }, estimatedSpeechMs);
+      }, estimatedSpeechMs + followUpWaitMs);
     }
 
     // Navigate browser: use Claude's section, or stay on current section
@@ -500,7 +523,7 @@ async function handleTranscription(call, callback) {
     callback(null, {
       call_id,
       type: action,
-      response_text,
+      response_text: finalResponseText,
       browser_command: { ...step.browser_action, section: navSection },
       demo_step: latestStep,
     });

@@ -390,10 +390,31 @@ class DemoBrowser {
       logger.warn('test-bma.html not found, browser will show blank page');
     }
 
+    const configDir = resolve(__dirname, '../../../config');
+    const MIME_TYPES = {
+      '.html': 'text/html', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.png': 'image/png', '.svg': 'image/svg+xml', '.css': 'text/css', '.js': 'text/javascript',
+    };
     await new Promise((resolveListen) => {
       this.server = createServer((req, res) => {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(html);
+        const urlPath = (req.url || '/').split('?')[0];
+        if (urlPath === '/' || urlPath === '/index.html') {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(html);
+          return;
+        }
+        // Serve static assets (hero background image etc.) from config/
+        const filePath = resolve(configDir, urlPath.replace(/^\//, ''));
+        if (!filePath.startsWith(configDir)) { res.writeHead(403); res.end(); return; }
+        try {
+          const data = readFileSync(filePath);
+          const ext = urlPath.substring(urlPath.lastIndexOf('.'));
+          res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
+          res.end(data);
+        } catch {
+          res.writeHead(404);
+          res.end('Not found');
+        }
       });
       this.server.on('error', (err) => {
         // EADDRINUSE etc. must not crash the whole bot with an unhandled throw
@@ -551,6 +572,11 @@ function startDemoBrowserGrpc(port = 50057) {
 // container cleanly instead of narrating into a dead meeting.
 const MEETING_DEAD_PATTERNS = /MEETING_STATUS_FAILED|MEETING_STATUS_ENDED|meeting failed|failed to join|fail code/i;
 
+// Keep capturing meeting audio while the bot is speaking so prospects can
+// barge in mid-narration (live-tested). Set CAPTURE_DURING_PLAYBACK=false to
+// fall back to hard echo suppression at the audio layer.
+const CAPTURE_DURING_PLAYBACK = process.env.CAPTURE_DURING_PLAYBACK !== 'false';
+
 class ZoomSDKBot {
   constructor(callId, { onMicReady, onMeetingDead } = {}) {
     this.callId = callId;
@@ -591,7 +617,7 @@ class ZoomSDKBot {
     const config = `client-id="${tomlEscape(process.env.ZOOM_CLIENT_ID)}"
 client-secret="${tomlEscape(process.env.ZOOM_CLIENT_SECRET)}"
 join-url="${tomlEscape(joinUrl)}"
-display-name="Scopio Demo Agent"
+${password ? `password="${tomlEscape(password)}"\n` : ''}display-name="Scopio Demo Agent"
 
 [RawAudio]
 file="meeting-audio.pcm"
@@ -624,8 +650,9 @@ file="meeting-audio.pcm"
         setTimeout(() => this.openSTTStream(), 1000);
       }
 
-      // Virtual mic ready → the bot can speak; this is the auto-demo trigger
-      if (!this.micReadyFired && msg.includes('virtual mic can send')) {
+      // Virtual mic / VoIP ready → the bot can speak; this is the auto-demo
+      // trigger ("join VoIP" observed in live SDK logs as the earlier marker)
+      if (!this.micReadyFired && (msg.includes('virtual mic can send') || msg.includes('join VoIP'))) {
         this.micReadyFired = true;
         this.onMicReady();
       }
@@ -792,13 +819,17 @@ file="meeting-audio.pcm"
         lastSize = 0; // file was truncated/rotated
       }
 
-      if (this.isSpeaking) {
+      if (this.isSpeaking && !CAPTURE_DURING_PLAYBACK) {
         // Zoom's mixed stream includes our own TTS voice. Discard everything
         // captured during playback — skipping without advancing lastSize used
         // to replay the whole backlog (our own words) into STT afterwards.
         lastSize = size;
         return;
       }
+      // With capture-during-playback (default, live-tested): audio keeps
+      // flowing during narration so the prospect can barge in mid-step. The
+      // orchestrator's transcript gate is responsible for separating echoes
+      // of our own voice from real interrupts.
 
       if (size <= lastSize) return;
 

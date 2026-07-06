@@ -47,6 +47,12 @@ describe('filler handling', () => {
     assert.equal(gate.evaluate(finalEvent('It.')).kind, 'filler');
   });
 
+  test('LIVE-TUNED: attention-getters are NOT filler (they pause the demo)', () => {
+    const gate = createTranscriptGate();
+    assert.notEqual(gate.evaluate(finalEvent('Hello?')).kind, 'filler');
+    assert.notEqual(gate.evaluate(finalEvent('hey')).kind, 'filler');
+  });
+
   test('REGRESSION P0.3: filler followed by a real question is NOT deduplicated', () => {
     const gate = createTranscriptGate();
     assert.equal(gate.evaluate(finalEvent('okay', { now: 1000 })).kind, 'filler');
@@ -71,7 +77,9 @@ describe('deduplication', () => {
 
   test('a much longer question sharing a short prefix is NOT deduplicated', () => {
     const gate = createTranscriptGate();
-    assert.equal(gate.evaluate(finalEvent('Can you show', { now: 1000 })).kind, 'question');
+    // "Can you show" is an ackable attention-getter (live-tuned) — but it must
+    // not swallow the full question that follows it
+    assert.equal(gate.evaluate(finalEvent('Can you show', { now: 1000 })).kind, 'interrupt');
     const d = gate.evaluate(
       finalEvent('Can you show me the scan viewer and the report export section again please?', { now: 2000 }),
     );
@@ -95,8 +103,14 @@ describe('deduplication', () => {
 describe('low confidence', () => {
   test('low-confidence garbage is ignored', () => {
     const gate = createTranscriptGate();
-    const d = gate.evaluate(finalEvent('purple monkey dishwasher', { confidence: 0.3 }));
+    const d = gate.evaluate(finalEvent('purple monkey dishwasher', { confidence: 0.2 }));
     assert.equal(d.kind, 'low-confidence');
+  });
+
+  test('LIVE-TUNED: moderate confidence (0.4) passes — Google scores short real speech low', () => {
+    const gate = createTranscriptGate();
+    const d = gate.evaluate(finalEvent('how much does this cost', { confidence: 0.4 }));
+    assert.equal(d.kind, 'question');
   });
 
   test('single non-filler word with high confidence is ignored (too short)', () => {
@@ -114,9 +128,15 @@ describe('low confidence', () => {
 describe('interrupt detection', () => {
   test('strong interrupt phrase gets an ack', () => {
     const gate = createTranscriptGate();
-    const d = gate.evaluate(finalEvent('Sorry to interrupt, I have a question', { now: 1000 }));
+    const d = gate.evaluate(finalEvent('I have a question', { now: 1000 }));
     assert.equal(d.kind, 'interrupt');
     assert.equal(d.ack, true);
+  });
+
+  test('LIVE-TUNED: a longer utterance with an interrupt phrase goes to Claude', () => {
+    const gate = createTranscriptGate();
+    const d = gate.evaluate(finalEvent('Sorry to interrupt, I have a question about pricing', { confidence: 0.9 }));
+    assert.equal(d.kind, 'question');
   });
 
   test('second interrupt within the cooldown is not re-acked', () => {
@@ -141,6 +161,20 @@ describe('interrupt detection', () => {
   test('standalone "wait wait" is an interrupt', () => {
     const gate = createTranscriptGate();
     assert.equal(gate.evaluate(finalEvent('wait wait', { confidence: 0.9 })).kind, 'interrupt');
+  });
+
+  test('LIVE-TUNED: short attention-getters are interrupts', () => {
+    const gate = createTranscriptGate();
+    assert.equal(gate.evaluate(finalEvent('Hello?', { confidence: 0.9, now: 1000 })).kind, 'interrupt');
+    assert.equal(gate.evaluate(finalEvent('show me', { confidence: 0.9, now: 20000 })).kind, 'interrupt');
+    assert.equal(gate.evaluate(finalEvent('Stop.', { confidence: 0.9, now: 40000 })).kind, 'interrupt');
+    assert.equal(gate.evaluate(finalEvent('hang on', { confidence: 0.9, now: 60000 })).kind, 'interrupt');
+  });
+
+  test('LIVE-TUNED: attention-getter words inside real questions do NOT ack', () => {
+    const gate = createTranscriptGate();
+    assert.equal(gate.evaluate(finalEvent('Show me the scan viewer again', { confidence: 0.9, now: 1000 })).kind, 'question');
+    assert.equal(gate.evaluate(finalEvent('What about the pricing model', { confidence: 0.9, now: 10000 })).kind, 'question');
   });
 
   test('a long utterance containing an interrupt phrase is treated as a question', () => {

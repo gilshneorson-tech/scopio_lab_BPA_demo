@@ -27,13 +27,16 @@ services:
       - REDIS_URL=redis://redis:6379
       - CLAUDE_GRPC_ADDR=claude-wrapper:50052
       - BROWSER_GRPC_ADDR=browser-controller:50053
-      - DEMO_BROWSER_GRPC_ADDR=zoom-bot:50057
+      # Points at whichever bot runs the call: zoom-bot:50057 (default) or
+      # meet-bot:50057 when running the Google Meet profile
+      - DEMO_BROWSER_GRPC_ADDR=${DEMO_BROWSER_GRPC_ADDR:-zoom-bot:50057}
       - TTS_GRPC_ADDR=tts-service:50054
       - PERSISTENCE_GRPC_ADDR=persistence:50055
       - HTTP_PORT=3000
       - GRPC_PORT=50051
       - AGENT_NAME=${AGENT_NAME:-Alex}
       - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
+      - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.3}
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
       - TTS_MODEL=${TTS_MODEL:-eleven_turbo_v2}
       - LOG_LEVEL=${LOG_LEVEL:-info}
@@ -75,6 +78,7 @@ services:
       - AUTO_DEMO=${AUTO_DEMO:-true}
       - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
       - PROSPECT_NAME=${PROSPECT_NAME}
+      - CAPTURE_DURING_PLAYBACK=${CAPTURE_DURING_PLAYBACK:-true}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - DISPLAY=:99
     volumes:
@@ -196,6 +200,72 @@ services:
         limits:
           memory: 256M
 
+  # ─── Google Meet mode (docker compose --profile meet up) ───
+  meet-bot:
+    build:
+      context: .
+      dockerfile: services/meet-bot/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      - MEET_URL=${MEET_URL}
+      - MEET_BOT_NAME=${MEET_BOT_NAME:-Scopio Demo Agent}
+      - GOOGLE_EMAIL=${GOOGLE_EMAIL}
+      - GOOGLE_PASSWORD=${GOOGLE_PASSWORD}
+      - ORCHESTRATOR_GRPC_ADDR=orchestrator:50051
+      - ORCHESTRATOR_HTTP_URL=http://orchestrator:3000
+      - STT_GRPC_ADDR=stt-service:50056
+      - TTS_GRPC_ADDR=tts-service:50054
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
+      - TTS_MODEL=${TTS_MODEL:-eleven_turbo_v2}
+      - AUTO_DEMO=${AUTO_DEMO:-true}
+      - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
+      - PROSPECT_NAME=${PROSPECT_NAME}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DISPLAY=:99
+    volumes:
+      - meet-tts-audio:/tmp/meet-audio
+      - tts-audio:/tmp/zoom-audio
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+      stt-service:
+        condition: service_healthy
+      tts-service:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          # Runs Xvfb + PulseAudio + TWO Chromiums (Meet client + demo page)
+          memory: 2G
+    profiles:
+      - meet
+
+  meeting-launcher:
+    build:
+      context: .
+      dockerfile: services/meeting-launcher/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - HOST_PROJECT_DIR=/opt/scopio
+      - LAUNCHER_USER=${LAUNCHER_USER:-scopio}
+      - LAUNCHER_PASS=${LAUNCHER_PASS:?set LAUNCHER_PASS in .env}
+      - LAUNCHER_PORT=8080
+    volumes:
+      # The launcher edits .env and starts/stops bot containers on the host
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/scopio/.env:/opt/scopio/.env
+      - /opt/scopio/docker-compose.yml:/opt/scopio/docker-compose.yml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    profiles:
+      - launcher
+
 volumes:
   audio-data:
   tts-audio:
+  meet-tts-audio:

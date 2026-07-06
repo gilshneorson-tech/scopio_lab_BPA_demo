@@ -20,7 +20,9 @@ Prospect audio (Zoom)
 | Service | Port | Runtime | Responsibility |
 |---|---|---|---|
 | `orchestrator` | 3000/50051 | Node.js + xstate | Central state machine |
-| `zoom-bot` | 50057 | Node.js + Zoom SDK (C++) | Joins call, audio in/out, screen share |
+| `zoom-bot` | 50057 | Node.js + Zoom SDK (C++) | Joins Zoom call, audio in/out, screen share |
+| `meet-bot` | 50057 | Node.js + Playwright | Joins Google Meet (alternative to zoom-bot; `--profile meet`) |
+| `meeting-launcher` | 8080 | Node.js + Fastify | Operator web UI: set meeting, start/stop the bot |
 | `claude-wrapper` | 50052 | Node.js + Claude API | AI reasoning |
 | `browser-controller` | 50053 | Node.js + Playwright | BMA UI automation |
 | `tts-service` | 50054 | Node.js + ElevenLabs | Text-to-speech |
@@ -86,3 +88,18 @@ curl -X POST http://localhost:3000/api/sessions/{call_id}/auto-demo
 - **Phase 2** (wk 4–6): Voice loop — Google Cloud STT, real-time Claude, ElevenLabs TTS
 - **Phase 3** (wk 7–9): Full automation — FSM-driven demo, synced browser, screen share
 - **Phase 4** (wk 10–12): Hardening — error recovery, load testing, GKE migration
+- **Phase 5**: Google Meet support (`meet-bot`) + operator meeting launcher
+
+### Google Meet mode
+
+```bash
+# .env: set MEET_URL, DEMO_BROWSER_GRPC_ADDR=meet-bot:50057
+docker compose --profile meet up --build
+```
+
+### Meeting launcher (operator UI)
+
+Web UI on :8080 to set the meeting URL/ID and start/stop the bot without SSH.
+Run either as a compose profile (`docker compose --profile launcher up`) or as
+a systemd service on the VM (`bash scripts/install-launcher.sh` — set
+LAUNCHER_PASS, or a password is generated and printed).

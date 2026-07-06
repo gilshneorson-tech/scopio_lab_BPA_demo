@@ -10,9 +10,11 @@
  * that follows it ("Okay, so how much does this cost?").
  */
 
-// Filler / noise that should never pause the demo or call Claude (STT echo + agreement)
+// Filler / noise that should never pause the demo or call Claude (STT echo + agreement).
+// LIVE-TUNED: "hello"/"hi"/"hey"/"thanks" intentionally NOT here — during the
+// auto-demo they are valid attention-getters, not noise.
 export const FILLER_PATTERNS =
-  /^[\s.,!?]*(?:it|the|a|um|uh|hmm|ok|okay|got it|sure|right|yes|yeah|yep|interesting|cool|great|nice|thanks|thank you|hello|hi|hey|hello hello)[\s.,!?]*$/i;
+  /^[\s.,!?]*(?:it|the|a|um|uh|hmm|ok|okay|got it|sure|right|yes|yeah|yep|interesting|cool|great|nice)[\s.,!?]*$/i;
 
 // Phrases that always signal "prospect wants attention" regardless of surrounding words
 const STRONG_INTERRUPT_PHRASES = [
@@ -26,22 +28,31 @@ const STRONG_INTERRUPT_PHRASES = [
   'sorry to interrupt',
   'can i jump in',
 ];
+// A strong phrase in a short utterance gets the instant ack; anything longer
+// almost certainly carries the actual question — route it to Claude
+const STRONG_PHRASE_MAX_WORDS = 6;
 
-// Tokens that only signal an interrupt when the utterance is short and standalone
-// (a bare "wait" or the agent's name). In longer sentences these are ordinary words
-// ("can't wait to see the reporting side").
-const WEAK_INTERRUPT_TOKENS = ['wait', 'may i'];
-const WEAK_TOKEN_MAX_WORDS = 4;
-
-// An utterance this long is a real question even if it opens with an interrupt phrase
-const INTERRUPT_MAX_WORDS = 12;
+// Tokens that only signal an interrupt when the utterance is short and
+// standalone. In longer sentences these are ordinary words ("can't wait to
+// see the reporting side", "show me the scan viewer again" → real question).
+// LIVE-TUNED list from call transcripts ("top" is a frequent STT rendering
+// of a spoken "Stop").
+const WEAK_INTERRUPT_TOKENS = [
+  'wait', 'may i', 'hey', 'hello', 'hi',
+  'what about', 'what else', 'can you', 'tell me', 'show me',
+  'go back', 'stop', 'top', 'let me', 'actually',
+  'hang on', 'one second', 'question', 'pause',
+];
+const WEAK_TOKEN_MAX_WORDS = 3;
 
 const DEFAULTS = {
   agentName: 'Alex',
   dedupWindowMs: 4000,
   interruptCooldownMs: 10000,
   echoWindowMs: 30000,
-  minConfidence: 0.65,
+  // LIVE-TUNED: Google frequently scores short, real utterances well below
+  // 0.65 — that floor was filtering genuine questions
+  minConfidence: 0.3,
   minWordCount: 2,
 };
 
@@ -88,8 +99,17 @@ export function createTranscriptGate(options = {}) {
     return live.some((s) => s.text.includes(normalized));
   }
 
-  function isLikelyInterrupt(trimmed, wordCount) {
+  // Matches interrupt vocabulary at all — used to exempt likely interrupts
+  // from the confidence filter even when they're long
+  function matchesInterruptVocab(trimmed, wordCount) {
     if (strongPattern.test(trimmed)) return true;
+    return wordCount <= WEAK_TOKEN_MAX_WORDS && weakPattern.test(trimmed);
+  }
+
+  // Short enough to deserve the instant "Of course, go ahead." ack; longer
+  // matches carry the actual question and go to Claude
+  function isAckableInterrupt(trimmed, wordCount) {
+    if (wordCount <= STRONG_PHRASE_MAX_WORDS && strongPattern.test(trimmed)) return true;
     return wordCount <= WEAK_TOKEN_MAX_WORDS && weakPattern.test(trimmed);
   }
 
@@ -132,17 +152,17 @@ export function createTranscriptGate(options = {}) {
       recentTranscripts.set(callId, { text: normalized, timestamp: now });
 
       const wordCount = trimmed.split(/\s+/).length;
-      const interrupt = isLikelyInterrupt(trimmed, wordCount);
+      const interruptVocab = matchesInterruptVocab(trimmed, wordCount);
 
       if (
-        !interrupt &&
+        !interruptVocab &&
         confidence > 0 &&
         (confidence < cfg.minConfidence || wordCount < cfg.minWordCount)
       ) {
         return { kind: 'low-confidence', wordCount };
       }
 
-      if (interrupt && wordCount < INTERRUPT_MAX_WORDS) {
+      if (isAckableInterrupt(trimmed, wordCount)) {
         const lastAck = lastInterruptAck.get(callId);
         const ack = lastAck === undefined || now - lastAck >= cfg.interruptCooldownMs;
         if (ack) lastInterruptAck.set(callId, now);
