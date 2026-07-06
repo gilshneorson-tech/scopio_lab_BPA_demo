@@ -15,7 +15,8 @@
     "dev": "docker compose up --build",
     "dev:detach": "docker compose up --build -d",
     "down": "docker compose down",
-    "proto:generate": "bash scripts/generate-proto.sh",
+    "preflight": "bash scripts/preflight.sh",
+    "test:e2e": "bash scripts/test-e2e.sh",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
   }

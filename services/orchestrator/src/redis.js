@@ -2,9 +2,10 @@ import Redis from 'ioredis';
 
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: 3,
+  // Retry forever with capped backoff: a brief Redis outage at startup must not
+  // leave a long-lived orchestrator in degraded mode for its entire lifetime.
   retryStrategy(times) {
-    if (times > 5) return null; // stop retrying
-    return Math.min(times * 200, 2000);
+    return Math.min(times * 200, 5000);
   },
 });
 
@@ -88,10 +89,14 @@ export async function getSessionInfo(callId) {
 
 export async function clearSession(callId) {
   try {
-    const keys = await redis.keys(`session:${callId}:*`);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
+    // Explicit key names — KEYS is a blocking scan and the schema is known
+    await redis.del(
+      `session:${callId}:state`,
+      `session:${callId}:step`,
+      `session:${callId}:started_at`,
+      `session:${callId}:prospect_name`,
+      `session:${callId}:history`,
+    );
   } catch { /* degraded mode */ }
 }
 

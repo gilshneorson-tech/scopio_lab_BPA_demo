@@ -51,7 +51,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && node --version && npm --version
 
 # Install runtime dependencies for SDK + audio + Playwright/Chromium
-RUN apt-get install -y --no-install-recommends \
+# (own apt-get update: reusing the previous layer's lists 404s on cache hits)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio pulseaudio-utils dbus \
     xvfb xauth \
     ffmpeg \
@@ -78,10 +79,13 @@ ENV SDK_BUILD_DIR=/opt/zoom-sdk/build
 WORKDIR /app
 
 # Install Node.js dependencies + Playwright
-COPY proto/ ./proto/
+COPY package.json package-lock.json ./
 COPY services/zoom-bot/package.json ./services/zoom-bot/
-RUN cd services/zoom-bot && npm install --production && npx playwright install chromium
+# Reproducible install pinned by the workspace lockfile — a transitive dep
+# bump must not change behavior the night before a demo
+RUN npm ci --workspace=@scopio/zoom-bot --omit=dev && npx playwright install chromium
 
+COPY proto/ ./proto/
 COPY services/zoom-bot/src/ ./services/zoom-bot/src/
 COPY config/test-bma.html ./config/test-bma.html
 
@@ -89,7 +93,10 @@ WORKDIR /app/services/zoom-bot
 
 RUN mkdir -p /data/audio /tmp/zoom-audio
 
-# Entrypoint: start PulseAudio + Xvfb, then Node.js
+# Entrypoint: start PulseAudio + Xvfb, then Node.js.
+# `exec node` makes Node PID 1's child under compose `init: true`, so SIGTERM
+# from `docker stop` actually reaches the bot (it leaves the meeting cleanly
+# instead of lingering as a ghost participant until SIGKILL).
 CMD bash -c "\
     mkdir -p /var/run/dbus && \
     dbus-uuidgen > /var/lib/dbus/machine-id 2>/dev/null; \
@@ -99,6 +106,7 @@ CMD bash -c "\
     adduser root pulse-access 2>/dev/null; \
     pulseaudio -D --exit-idle-time=-1 --system --disallow-exit 2>/dev/null; \
     export PULSE_SERVER=unix:/var/run/pulse/native; \
+    pactl info >/dev/null 2>&1 || echo 'WARN: PulseAudio is not responding — meeting audio may be degraded'; \
     pactl load-module module-null-sink sink_name=SpeakerOutput sink_properties=device.description=VirtualSpeaker 2>/dev/null; \
     pactl load-module module-null-sink sink_name=VirtualMic sink_properties=device.description=VirtualMic 2>/dev/null; \
     pactl load-module module-loopback source=VirtualMic.monitor sink=SpeakerOutput latency_msec=20 2>/dev/null; \
@@ -108,4 +116,6 @@ CMD bash -c "\
     echo 'system.audio.type=default' >> ~/.config/zoomus.conf; \
     Xvfb :99 -screen 0 1920x1080x24 -ac &>/dev/null & \
     export DISPLAY=:99; \
-    node src/index.js"
+    for i in \$(seq 1 50); do [ -e /tmp/.X11-unix/X99 ] && break; sleep 0.2; done; \
+    [ -e /tmp/.X11-unix/X99 ] || echo 'WARN: Xvfb socket not ready after 10s'; \
+    exec node src/index.js"

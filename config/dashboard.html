@@ -162,10 +162,21 @@
     }
 
     function addTranscript(role, text, action) {
+      // textContent, not innerHTML — Claude output and prospect questions are
+      // untrusted and must not inject markup into the operator console
       const div = document.createElement('div');
       div.className = 'msg';
-      const badge = action ? `<span class="action-badge">${action}</span>` : '';
-      div.innerHTML = `<span class="role ${role}">${role}:</span>${text}${badge}`;
+      const roleSpan = document.createElement('span');
+      roleSpan.className = `role ${role}`;
+      roleSpan.textContent = `${role}:`;
+      div.appendChild(roleSpan);
+      div.appendChild(document.createTextNode(` ${text}`));
+      if (action) {
+        const badge = document.createElement('span');
+        badge.className = 'action-badge';
+        badge.textContent = action;
+        div.appendChild(badge);
+      }
       $('transcript').appendChild(div);
       $('transcript').scrollTop = $('transcript').scrollHeight;
     }
@@ -189,11 +200,72 @@
       $('btn-ask').disabled = ended || !callId;
 
       if (ended) {
-        $('session-info').innerHTML = `Session ended`;
+        $('session-info').textContent = 'Session ended';
         addTranscript('system', 'Demo completed.', null);
         autoPlaying = false;
-        $('btn-auto').textContent = 'Auto-Play';
+        $('btn-auto').textContent = 'Auto-Demo';
+        stopPolling();
       }
+    }
+
+    // ─── Live monitoring: poll session status so the dashboard reflects a
+    // call the zoom-bot is running (state, step, pause status) ───
+    let pollTimer = null;
+    let lastSeenStep = -1;
+
+    function startPolling() {
+      stopPolling();
+      pollTimer = setInterval(pollStatus, 2000);
+    }
+
+    function stopPolling() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    async function pollStatus() {
+      if (!callId) return;
+      try {
+        const res = await fetch(`${API}/api/sessions/${callId}`);
+        const data = await res.json();
+        if (data.error) return;
+
+        const demo = data.auto_demo;
+        const live = data.state === 'presenting';
+        const status = demo && demo.running
+          ? (demo.paused ? `PAUSED (${demo.pause_reason || 'prospect speaking'})` : 'NARRATING')
+          : (live ? 'LIVE' : (data.state || '').toUpperCase());
+        $('session-info').innerHTML =
+          `<span class="active">${status}</span> &nbsp; ${callId.slice(0, 8)}… &nbsp; ${data.prospect_name || ''}`;
+
+        if (data.step !== undefined && data.step !== lastSeenStep) {
+          lastSeenStep = data.step;
+          updateUI(data);
+          if (data.step > 0) addTranscript('system', `Advanced to step ${data.step}: ${data.topic || ''}`, null);
+        }
+        if (data.state === 'ended') updateUI(data);
+      } catch { /* transient */ }
+    }
+
+    // Attach to a session someone else started (e.g. the zoom-bot)
+    async function attachToActiveSession() {
+      try {
+        const res = await fetch(`${API}/api/sessions`);
+        const data = await res.json();
+        const active = (data.sessions || []).find((s) => s.state === 'presenting');
+        if (active && !callId) {
+          callId = active.call_id;
+          currentStep = active.step || 0;
+          lastSeenStep = -1;
+          $('btn-end').disabled = false;
+          $('btn-advance').disabled = false;
+          $('btn-auto').disabled = false;
+          $('qa-input').disabled = false;
+          $('btn-ask').disabled = false;
+          addTranscript('system', `Attached to running session (${active.prospect_name || 'unknown prospect'})`, null);
+          renderSteps();
+          startPolling();
+        }
+      } catch { /* orchestrator unreachable */ }
     }
 
     async function createSession() {
@@ -208,9 +280,11 @@
         const data = await res.json();
         callId = data.call_id;
         currentStep = 0;
+        lastSeenStep = -1;
         $('session-info').innerHTML = `<span class="active">LIVE</span> &nbsp; ${callId.slice(0, 8)}...`;
         $('btn-end').disabled = false;
         $('transcript').innerHTML = '';
+        startPolling();
 
         updateBMA('home');
         renderSteps();
@@ -236,7 +310,11 @@
       try {
         const res = await fetch(`${API}/api/sessions/${callId}/advance`, { method: 'POST' });
         const data = await res.json();
-        addTranscript('agent', data.script || `Navigated to: ${data.topic}`, `STEP ${data.step}`);
+        if (data.state === 'ended' && data.message) {
+          addTranscript('system', data.message, null);
+        } else {
+          addTranscript('agent', data.script || data.topic || '', `STEP ${data.step}`);
+        }
         updateUI(data);
       } catch (err) {
         addTranscript('system', `Error: ${err.message}`, null);
@@ -276,36 +354,50 @@
       input.focus();
     }
 
+    // Drive the REAL auto-demo (narration + pause/interrupt handling), not a
+    // manual /advance loop with a fixed sleep
     async function autoPlay() {
-      if (autoPlaying) {
-        autoPlaying = false;
-        $('btn-auto').textContent = 'Auto-Play';
-        return;
+      if (!callId) return;
+      try {
+        if (autoPlaying) {
+          await fetch(`${API}/api/sessions/${callId}/auto-demo/stop`, { method: 'POST' });
+          autoPlaying = false;
+          $('btn-auto').textContent = 'Auto-Demo';
+          addTranscript('system', 'Auto-demo stopped.', null);
+          return;
+        }
+        const res = await fetch(`${API}/api/sessions/${callId}/auto-demo`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+          addTranscript('system', `Auto-demo failed: ${data.error}`, null);
+          return;
+        }
+        autoPlaying = true;
+        $('btn-auto').textContent = 'Stop Auto-Demo';
+        addTranscript('system', `Auto-demo ${data.status} (${data.steps || 10} steps). Progress shown live.`, null);
+      } catch (err) {
+        addTranscript('system', `Auto-demo error: ${err.message}`, null);
       }
-      autoPlaying = true;
-      $('btn-auto').textContent = 'Stop';
-
-      while (autoPlaying && callId) {
-        await advance();
-        if (!autoPlaying) break;
-        // Wait proportional to step duration
-        const step = STEPS[currentStep];
-        if (!step) break;
-        await new Promise(r => setTimeout(r, 3000));
-      }
-      autoPlaying = false;
-      $('btn-auto').textContent = 'Auto-Play';
     }
 
     async function endSession() {
       if (!callId) return;
-      await fetch(`${API}/api/sessions/${callId}/end`, { method: 'POST' });
+      try {
+        await fetch(`${API}/api/sessions/${callId}/end`, { method: 'POST' });
+      } catch (err) {
+        addTranscript('system', `End failed: ${err.message}`, null);
+      }
+      stopPolling();
       updateUI({ state: 'ended', step: currentStep, topic: 'Ended' });
       callId = null;
       $('btn-end').disabled = true;
     }
 
     renderSteps();
+    // If the zoom-bot already started a call, attach to it; keep looking
+    // while idle so the dashboard picks up bot-initiated sessions
+    attachToActiveSession();
+    setInterval(() => { if (!callId) attachToActiveSession(); }, 5000);
   </script>
 </body>
 </html>

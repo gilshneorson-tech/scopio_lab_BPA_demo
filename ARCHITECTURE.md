@@ -1,6 +1,6 @@
 # Architecture — ScopioLabs BPA Demo Agent
 
-> Last updated: 2026-04-04
+> Last updated: 2026-07-05
 
 ## System Overview
 
@@ -46,7 +46,8 @@ Prospect speaks (Zoom call)
 | `orchestrator.proto` | `OnTranscription`, `OnParticipantEvent`, `StartSession`, `GetSessionStatus`, `EndSession` |
 | `stt.proto` | `StreamAudio` (bidirectional streaming) |
 | `tts.proto` | `Synthesize` (server-side streaming) |
-| `browser.proto` | `ExecuteAction`, `Initialize`, `Screenshot`, `GetPageState` |
+| `browser.proto` (BrowserController) | `ExecuteAction`, `Initialize`, `Screenshot`, `GetPageState` |
+| `browser.proto` (DemoBrowser, served by zoom-bot) | `NavigateSection`, `PlayAudio`, `StopAudio` |
 | `claude.proto` | `Decide` |
 | `persistence.proto` | `SaveCall`, `AppendQA`, `AppendTranscript`, `GetCall`, `UpdateOutcome` |
 
@@ -70,10 +71,13 @@ In HTTP/manual mode, `joining` is auto-skipped (immediate `PROSPECT_JOINED` on s
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `POST` | `/api/sessions` | Create new demo session |
+| `GET` | `/api/sessions` | List active sessions (dashboard attach) |
+| `POST` | `/api/sessions` | Create new demo session (single-session model: tears down stale sessions) |
 | `GET` | `/api/sessions/:callId` | Get session status |
 | `POST` | `/api/sessions/:callId/advance` | Advance to next demo step (triggers browser navigation) |
 | `POST` | `/api/sessions/:callId/question` | Submit prospect question to Claude |
+| `POST` | `/api/sessions/:callId/auto-demo` | Start the narrated auto-demo |
+| `POST` | `/api/sessions/:callId/auto-demo/stop` | Stop the auto-demo |
 | `POST` | `/api/sessions/:callId/end` | End session |
 | `GET` | `/health` | Health check |
 | `GET` | `/` | Dashboard UI |
@@ -89,7 +93,7 @@ session:{call_id}:started_at     → timestamp
 session:{call_id}:prospect_name  → extracted from intro
 ```
 
-TTL: 2 hours per session. Redis is non-critical — orchestrator degrades gracefully if Redis is unavailable (session state lives in-memory via xstate actors).
+TTL: 2 hours per session. Redis is non-critical — orchestrator degrades gracefully if Redis is unavailable (session state lives in-memory via xstate actors). Note: in degraded mode conversation history is empty, so Claude answers without recent-context — reduced quality, not an outage.
 
 ## Firestore Schema
 
@@ -107,7 +111,7 @@ TTL: 2 hours per session. Redis is non-critical — orchestrator degrades gracef
 
 ## Claude Integration
 
-**Model:** `claude-sonnet-4-20250514`
+**Model:** `claude-sonnet-5` (configurable via `CLAUDE_MODEL`; the previous pin `claude-sonnet-4-20250514` retired 2026-06-15)
 
 **Decision flow:** Receives current demo step context + conversation history + prospect transcript. Returns one of:
 - `ADVANCE` — proceed to next step
@@ -173,6 +177,7 @@ STT:            Google Cloud Speech-to-Text API
 | 50054 | TTS service gRPC | Internal |
 | 50055 | Persistence gRPC | Internal |
 | 50056 | STT service gRPC | Internal |
+| 50057 | zoom-bot DemoBrowser gRPC | Internal (browser nav + PlayAudio/StopAudio) |
 
 Ports 8001-8007 reserved (video automation pipeline). Port 8080 reserved (Cloud Run).
 
@@ -194,5 +199,5 @@ Real-time streaming STT will return results while prospect speaks, reducing perc
 |---|---|---|
 | 1 | Manual demo flow, browser nav, Claude Q&A, dashboard | DONE (2026-04-04) |
 | 2 | Voice pipeline: STT → Claude → TTS, latency tracking | DONE (2026-04-04) |
-| 3 | GCP deployment, Zoom SDK, Firestore, Docker Compose | DONE (2026-04-05) — bot joins Zoom, screen shares BMA page, auto-runs 10-step demo with Matilda voice, answers questions via Claude. Sync browser nav with narration next. |
-| 4 | Error recovery, load testing, GKE migration | Backlog |
+| 3 | GCP deployment, Zoom SDK, Firestore, Docker Compose | DONE (2026-04-05) — bot joins Zoom, screen shares BMA page, auto-runs 10-step demo with Matilda voice, answers questions via Claude, browser nav synced with narration. |
+| 4 | Error recovery, load testing, GKE migration | In progress (2026-07-05): STT stream rotation, browser crash relaunch, SDK-exit container restart, pause watchdog, interruptible narration, preflight script, unit tests. Remaining: participant-event wiring, load testing, CI, GKE. |

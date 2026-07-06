@@ -41,35 +41,42 @@ echo ""
 # ─── 2. Create GCE instance ───
 bold "2. Creating Compute Engine instance"
 
-# Check if instance already exists
+# Check if instance already exists. Answering "N" skips creation entirely —
+# it must not fall through to `instances create` (which fails under set -e).
+CREATE_INSTANCE=true
 if gcloud compute instances describe "$INSTANCE_NAME" --zone="$ZONE" --project="$PROJECT" &>/dev/null; then
-  echo "   Instance already exists. Delete it first with:"
-  echo "   gcloud compute instances delete $INSTANCE_NAME --zone=$ZONE --project=$PROJECT"
-  echo ""
-  read -p "   Delete and recreate? (y/N) " -n 1 -r
-  echo ""
+  echo "   Instance already exists."
+  if [ "${FORCE_RECREATE:-}" = "true" ]; then
+    REPLY=y
+  else
+    read -p "   Delete and recreate? (y/N) " -n 1 -r
+    echo ""
+  fi
   if [[ $REPLY =~ ^[Yy]$ ]]; then
     gcloud compute instances delete "$INSTANCE_NAME" --zone="$ZONE" --project="$PROJECT" --quiet
   else
-    echo "   Skipping instance creation"
+    echo "   Keeping existing instance — skipping creation"
+    CREATE_INSTANCE=false
   fi
 fi
 
-gcloud compute instances create "$INSTANCE_NAME" \
-  --project="$PROJECT" \
-  --zone="$ZONE" \
-  --machine-type="$MACHINE_TYPE" \
-  --boot-disk-size=100GB \
-  --boot-disk-type=pd-ssd \
-  --image-family=ubuntu-2204-lts \
-  --image-project=ubuntu-os-cloud \
-  --service-account="$SA" \
-  --scopes=cloud-platform \
-  --tags=scopio-demo \
-  --metadata-from-file=startup-script=scripts/gce-startup.sh \
-  2>&1
+if [ "$CREATE_INSTANCE" = "true" ]; then
+  gcloud compute instances create "$INSTANCE_NAME" \
+    --project="$PROJECT" \
+    --zone="$ZONE" \
+    --machine-type="$MACHINE_TYPE" \
+    --boot-disk-size=100GB \
+    --boot-disk-type=pd-ssd \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud \
+    --service-account="$SA" \
+    --scopes=cloud-platform \
+    --tags=scopio-demo \
+    --metadata-from-file=startup-script=scripts/gce-startup.sh \
+    2>&1
 
-green "   Instance created"
+  green "   Instance created"
+fi
 echo ""
 
 # ─── 3. Wait for instance to be ready ───

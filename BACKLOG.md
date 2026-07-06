@@ -11,9 +11,9 @@
 
 | Item | Status | Notes |
 |---|---|---|
-| Sync browser navigation with narration | Not started | Screen share shows BMA page but nav doesn't advance in step with auto-demo. Zoom-bot's local Playwright needs to navigate on each step. |
-| Reduce STT echo during TTS playback | Partial | isSpeaking flag helps but bot still picks up fragments of its own voice |
-| Fix MeetingFailCode 8 on meeting switch | Workaround | Full container recreate (down+up) fixes stale SDK state. Don't use restart. |
+| Sync browser navigation with narration | DONE (2026-04-05) | Auto-demo navigates zoom-bot's DemoBrowser before each narration, falls back to browser-controller |
+| Reduce STT echo during TTS playback | DONE (2026-07-05) — verify on next live call | Audio captured during playback is discarded (not replayed); narration playback goes through zoom-bot so isSpeaking is authoritative; orchestrator suppresses echoes of its own words |
+| Fix MeetingFailCode 8 on meeting switch | DONE (2026-07-05) — verify on next live call | SDK exit / meeting-failure now ends the session and exits the container non-zero; compose restart policy recreates a clean bot (stale pcm files truncated on start) |
 
 ## Phase 3 — GCP Deployment (DONE 2026-04-04)
 
@@ -39,14 +39,14 @@
 
 | Item | Status |
 |---|---|
-| Auto-advancing demo (timed steps, not just manual triggers) | Not started |
-| Error recovery (STT silence detection, browser crash restart) | Not started |
-| Prospect drop detection (Zoom SDK event) | Not started |
+| Auto-advancing demo (timed steps, not just manual triggers) | DONE — auto-demo paces by narration playback, holds the floor on qa_open |
+| Error recovery (STT reconnect, browser crash restart, SDK exit restart) | DONE (2026-07-05) — STT stream rotation/reconnect, Chromium relaunch, container restart on SDK death |
+| Prospect drop detection (Zoom SDK event) | Not started — OnParticipantEvent RPC exists; needs a participant-events C++ patch |
 | Graceful fallback for unknown questions | Partially done (Claude handles it) |
 | Load testing single instance | Not started |
 | GKE migration plan | Not started |
 | CI/CD pipeline (GitHub Actions running test-e2e.sh) | Not started |
-| Unit tests per service | Not started |
+| Unit tests per service | Started (2026-07-05) — transcript policy (28 tests), Claude response parsing (8 tests); run `npm test` |
 
 ## Open Questions
 
