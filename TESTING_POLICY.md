@@ -14,7 +14,7 @@
 ### Unit tests (no API keys, no services)
 ```bash
 npm test
-# Expected: 36 tests pass (28 transcript-policy + 8 parse-decision)
+# Expected: 41 tests pass (33 transcript-policy + 8 parse-decision)
 ```
 
 ### Phase 1 — E2E (no API keys needed)
@@ -63,7 +63,7 @@ of them need re-verification on the next live call.
 | 1 | Auto-demo navigates screen-shared browser before each narration | Orchestrator logs "Screen browser navigated" per step | PASS (2026-04-05) |
 | 2 | Fallback to browser-controller when zoom-bot unreachable | E2E test passes, orchestrator logs fallback | PASS (test-e2e.sh section 5) |
 | 3 | Demo flows without dead gaps between sections | Narration playback completion (PlayAudio response) paces steps | NEEDS RE-VERIFICATION (new pacing) |
-| 4 | Filler words ("ok", "hello") don't pause demo | Orchestrator logs "Filler detected — ignoring" | NEEDS VERIFICATION (now unit-tested; verify live) |
+| 4 | Filler words ("ok", "yeah") don't pause demo; "hello"/"hey" DO (attention-getters) | Orchestrator logs "Filler detected — ignoring" | NEEDS VERIFICATION (now unit-tested; verify live) |
 | 5 | Duplicate STT transcripts are deduplicated | "Duplicate transcript — skipping"; filler-then-question is NOT eaten | NEEDS VERIFICATION (now unit-tested; verify live) |
 | 6 | Interim STT results pause demo instantly AND cut narration audio | "paused (interim)" + StopAudio truncates playback within ~20ms chunks | NEEDS VERIFICATION |
 | 7 | Brief interrupts ("I have a question") get instant ack | "Of course, go ahead", demo stays paused, watchdog resumes after 30s of silence | NEEDS VERIFICATION |
@@ -73,6 +73,9 @@ of them need re-verification on the next live call.
 | 11 | Bot does NOT answer its own narration (echo) | No self-triggered Q&A; "Own-speech echo detected" in logs at most | NEEDS VERIFICATION (new) |
 | 12 | SDK death mid-call recovers | Container exits non-zero, compose restarts, bot rejoins with clean audio state | NEEDS VERIFICATION (new) |
 | 13 | Claude API failure mid-call | Bot speaks the canned bridge line instead of ignoring the question | NEEDS VERIFICATION (new) |
+| 14 | Barge-in mid-narration ("hold on" while the bot talks) pauses + cuts audio | Works with CAPTURE_DURING_PLAYBACK=true; watch for echo self-answers (see #11) | NEEDS VERIFICATION (new) |
+| 15 | Google Meet mode end-to-end (join, share, narrate, Q&A) | Same checklist as Zoom, via `--profile meet` | NEEDS VERIFICATION (new) |
+| 16 | Post-answer follow-up ("Did that answer your question?") + 5s hold | Prospect follow-up lands before narration resumes | NEEDS VERIFICATION (new) |
 
 ### Known issues history
 

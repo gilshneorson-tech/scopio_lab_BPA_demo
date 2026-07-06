@@ -35,6 +35,16 @@
 | Multi-language scripts (en/fr) | DONE (French voice quality insufficient, English only for now) |
 | Playwright browser on Xvfb for screen share content | DONE |
 
+## Phase 5 — Google Meet + Launcher (ported 2026-07-06 onto the review-fixes main)
+
+| Item | Status |
+|---|---|
+| meet-bot: join Meet, capture audio (parec), speak (paplay), tab-share demo page | Ported — needs live Meet verification |
+| meet-bot implements PlayAudio/StopAudio (same pacing/interrupt contract as zoom-bot) | DONE |
+| meeting-launcher web UI (set meeting, start/stop bot) | Ported — compose profile or systemd install |
+| Live-tuned transcript policy (attention-getters, 0.30 confidence floor, follow-up prompt) | DONE — unit-tested |
+| Barge-in during narration (capture-during-playback, orchestrator separates echo) | DONE — verify echo behavior live (TESTING_POLICY #11) |
+
 ## Phase 4 — Hardening
 
 | Item | Status |

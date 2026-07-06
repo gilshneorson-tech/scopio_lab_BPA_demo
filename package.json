@@ -9,7 +9,9 @@
     "services/browser-controller",
     "services/tts-service",
     "services/claude-wrapper",
-    "services/persistence"
+    "services/persistence",
+    "services/meet-bot",
+    "services/meeting-launcher"
   ],
   "scripts": {
     "dev": "docker compose up --build",

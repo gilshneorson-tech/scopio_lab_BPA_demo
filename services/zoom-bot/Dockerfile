@@ -88,6 +88,7 @@ RUN npm ci --workspace=@scopio/zoom-bot --omit=dev && npx playwright install chr
 COPY proto/ ./proto/
 COPY services/zoom-bot/src/ ./services/zoom-bot/src/
 COPY config/test-bma.html ./config/test-bma.html
+COPY config/scopio-background.jpg ./config/scopio-background.jpg
 
 WORKDIR /app/services/zoom-bot
 

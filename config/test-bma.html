@@ -7,6 +7,9 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; }
+    .bg-hero { background: url('/scopio-background.jpg') center/cover no-repeat; position: relative; }
+    .bg-hero::before { content: ''; position: absolute; inset: 0; background: rgba(15, 17, 23, 0.55); border-radius: 12px; }
+    .bg-hero > * { position: relative; z-index: 1; }
     nav { position: fixed; top: 0; left: 0; right: 0; background: #1a1d27; padding: 12px 24px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 100; border-bottom: 2px solid #2563eb; }
     nav a { color: #94a3b8; text-decoration: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; transition: all 0.2s; cursor: pointer; }
     nav a:hover { background: #2563eb22; color: #60a5fa; }
@@ -45,7 +48,7 @@
   </nav>
 
   <main>
-    <section id="home" class="active">
+    <section id="home" class="active bg-hero">
       <span class="badge">FDA CLEARED</span>
       <h1>Full-Field BMA Digital Analysis</h1>
       <p>The world's first FDA-cleared digital bone marrow aspirate application. Full-field imaging at 100x with AI-powered decision support.</p>

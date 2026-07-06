@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scopio Demo — Meeting Launcher</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0b0f;
+      color: #e0e0e0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .card {
+      background: #12141c;
+      border: 1px solid #1e2030;
+      border-radius: 16px;
+      padding: 40px;
+      width: 480px;
+      max-width: 90vw;
+    }
+
+    .logo {
+      font-weight: 700;
+      color: #2563eb;
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 13px;
+      margin-bottom: 32px;
+    }
+
+    .status-bar {
+      background: #1a1d27;
+      border: 1px solid #1e2030;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    .status-dot.running { background: #4ade80; box-shadow: 0 0 6px #4ade8088; }
+    .status-dot.stopped { background: #f87171; }
+    .status-dot.unknown { background: #64748b; }
+
+    label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #475569;
+      margin-bottom: 6px;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: #475569;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .hint a { color: #60a5fa; text-decoration: none; }
+    .hint a:hover { text-decoration: underline; }
+
+    textarea {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e0e0e0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      outline: none;
+      margin-bottom: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      resize: vertical;
+      min-height: 60px;
+      line-height: 1.5;
+    }
+
+    textarea:focus { border-color: #2563eb; }
+    textarea::placeholder { color: #475569; font-family: -apple-system, sans-serif; font-size: 13px; }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-join { background: #2563eb; color: white; }
+    .btn-join:hover:not(:disabled) { background: #3b82f6; }
+
+    .btn-stop { background: #1e293b; color: #f87171; }
+    .btn-stop:hover:not(:disabled) { background: #334155; }
+
+    .result {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .result.success { display: block; background: #16a34a22; border: 1px solid #16a34a44; color: #4ade80; }
+    .result.error { display: block; background: #dc262622; border: 1px solid #dc262644; color: #f87171; }
+    .result.loading { display: block; background: #2563eb22; border: 1px solid #2563eb44; color: #60a5fa; }
+
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #ffffff44;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .footer-links a {
+      color: #475569;
+      font-size: 12px;
+      text-decoration: none;
+    }
+
+    .footer-links a:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Scopio Demo Agent</div>
+    <div class="subtitle">Launch the AI demo bot into a meeting</div>
+
+    <div class="status-bar">
+      <span id="status-text"><span class="status-dot unknown"></span> Checking...</span>
+      <span id="status-meeting" style="color: #64748b;"></span>
+    </div>
+
+    <label for="invite-input">Meeting Invite Link</label>
+    <textarea id="invite-input" placeholder="Paste a Zoom or Google Meet invite link&#10;e.g. https://zoom.us/j/12345678&#10;e.g. https://meet.google.com/abc-defg-hij&#10;&#10;Tip: paste the full invite text including Passcode" autofocus></textarea>
+    <div id="platform-badge" style="font-size:12px; margin-bottom:8px; height:18px;"></div>
+    <div id="passcode-row" style="display:none; margin-bottom:12px;">
+      <label for="passcode-input">Meeting Passcode (optional)</label>
+      <input type="text" id="passcode-input" placeholder="e.g. 213283" style="width:100%;background:#1e293b;border:1px solid #334155;color:#e0e0e0;padding:10px 14px;border-radius:10px;font-size:14px;outline:none;font-family:'SF Mono','Fira Code',monospace;">
+    </div>
+    <div class="hint">
+      <strong>Zoom:</strong> Paste the full invite (link + passcode) or enter passcode separately below.<br>
+      <strong>Google Meet:</strong> Paste the meeting link.
+    </div>
+
+    <div class="actions">
+      <button class="btn-join" id="btn-join" onclick="joinMeeting()">Join Meeting</button>
+      <button class="btn-stop" id="btn-stop" onclick="stopBot()">Stop Bot</button>
+    </div>
+
+    <div class="result" id="result"></div>
+
+    <div class="footer-links">
+      <a id="dashboard-link" href="#" target="_blank">Demo Dashboard</a>
+      <a href="https://zoom.us/meeting" target="_blank">Zoom Web Portal</a>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    $('dashboard-link').href = `${location.protocol}//${location.hostname}:3000`;
+
+    function showResult(type, msg) {
+      const el = $('result');
+      el.className = `result ${type}`;
+      el.innerHTML = msg;
+    }
+
+    function detectPlatform(text) {
+      if (/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i.test(text)) return 'meet';
+      if (/zoom\.us\/j\/\d+/i.test(text)) return 'zoom';
+      if (/^\d[\d\s]+$/.test(text.trim())) return 'zoom';
+      return '';
+    }
+
+    $('invite-input').addEventListener('input', () => {
+      const text = $('invite-input').value;
+      const p = detectPlatform(text);
+      const badge = $('platform-badge');
+      if (p === 'meet') badge.innerHTML = '<span style="color:#4ade80;">&#9679;</span> Google Meet detected';
+      else if (p === 'zoom') badge.innerHTML = '<span style="color:#60a5fa;">&#9679;</span> Zoom detected';
+      else badge.innerHTML = '';
+      // Show passcode field for Zoom when URL has no ?pwd=
+      const hasEmbeddedPwd = /pwd=/i.test(text);
+      const hasInlinePasscode = /passcode:\s*\S/i.test(text);
+      $('passcode-row').style.display = (p === 'zoom' && !hasEmbeddedPwd && !hasInlinePasscode) ? 'block' : 'none';
+    });
+
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+
+        const isRunning = data.bot_status === 'running';
+        const dot = isRunning ? 'running' : 'stopped';
+        const platformLabel = data.platform === 'meet' ? ' (Google Meet)' : data.platform === 'zoom' ? ' (Zoom)' : '';
+        const label = isRunning ? `Bot running${platformLabel}` : 'Bot stopped';
+
+        $('status-text').innerHTML = `<span class="status-dot ${dot}"></span> ${label}`;
+        $('status-meeting').textContent = data.meeting_id ? `Meeting: ${data.meeting_id}` : '';
+      } catch {
+        $('status-text').innerHTML = '<span class="status-dot unknown"></span> Offline';
+      }
+    }
+
+    async function joinMeeting() {
+      const raw = $('invite-input').value.trim();
+      if (!raw) {
+        $('invite-input').focus();
+        return;
+      }
+
+      $('btn-join').disabled = true;
+      $('btn-join').innerHTML = '<span class="spinner"></span> Joining...';
+      showResult('loading', '<span class="spinner"></span> Restarting zoom-bot with new meeting...');
+
+      try {
+        const passcode = $('passcode-input') ? $('passcode-input').value.trim() : '';
+        const res = await fetch('/api/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meeting_id: raw, password: passcode || undefined }),
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+          const pName = data.platform === 'meet' ? 'Google Meet' : 'Zoom';
+          showResult('success', `Bot joining ${pName} meeting ${data.meeting_id}. It will appear in ~15–30 seconds.`);
+          $('invite-input').value = '';
+          setTimeout(fetchStatus, 5000);
+          setTimeout(fetchStatus, 15000);
+        } else {
+          showResult('error', data.error || 'Unknown error');
+        }
+      } catch (err) {
+        showResult('error', `Request failed: ${err.message}`);
+      }
+
+      $('btn-join').disabled = false;
+      $('btn-join').textContent = 'Join Meeting';
+    }
+
+    async function stopBot() {
+      $('btn-stop').disabled = true;
+      showResult('loading', 'Stopping bot...');
+
+      try {
+        const res = await fetch('/api/stop', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          showResult('success', 'Bot stopped.');
+        } else {
+          showResult('error', data.error);
+        }
+      } catch (err) {
+        showResult('error', `Request failed: ${err.message}`);
+      }
+
+      $('btn-stop').disabled = false;
+      setTimeout(fetchStatus, 2000);
+    }
+
+    // Ctrl+Enter / Cmd+Enter to submit
+    $('invite-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) joinMeeting();
+    });
+
+    fetchStatus();
+    setInterval(fetchStatus, 15000);
+  </script>
+</body>
+</html>
