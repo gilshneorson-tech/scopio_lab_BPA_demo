@@ -5,19 +5,13 @@
       "name": "orchestrator",
       "runtimeExecutable": "node",
       "runtimeArgs": ["services/orchestrator/src/index.js"],
-      "port": 3000,
-      "env": {
-        "ANTHROPIC_API_KEY": ""
-      }
+      "port": 3000
     },
     {
       "name": "claude-wrapper",
       "runtimeExecutable": "node",
       "runtimeArgs": ["services/claude-wrapper/src/index.js"],
-      "port": 50052,
-      "env": {
-        "ANTHROPIC_API_KEY": ""
-      }
+      "port": 50052
     },
     {
       "name": "browser-controller",

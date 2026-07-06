@@ -633,6 +633,27 @@ async function startHTTP() {
     };
   });
 
+  // List active sessions — lets the dashboard attach to a session the
+  // zoom-bot created (it used to show "No active session" during live calls)
+  app.get('/api/sessions', async () => {
+    const active = [];
+    for (const [callId, actor] of sessions) {
+      try {
+        const snapshot = actor.getSnapshot();
+        const ctx = snapshot.context;
+        const demo = autoDemos.get(callId);
+        active.push({
+          call_id: callId,
+          state: String(snapshot.value),
+          step: ctx.currentStep,
+          prospect_name: ctx.prospectName,
+          auto_demo: demo ? { running: demo.running, paused: demo.paused } : null,
+        });
+      } catch { /* actor stopped */ }
+    }
+    return { sessions: active };
+  });
+
   app.get('/api/sessions/:callId', async (req) => {
     const { callId } = req.params;
     const actor = sessions.get(callId);

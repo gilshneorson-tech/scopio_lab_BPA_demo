@@ -2,6 +2,31 @@
 
 > Produced 2026-07-05 by a full multi-agent code review (orchestrator, zoom-bot + C++ SDK patches,
 > all peripheral services, infra/scripts/docs). This is the work plan for the follow-up fix session.
+
+## ✅ STATUS (2026-07-05, same-day fix session)
+
+**Implemented:** all of T0 items 1–3 and 5, all P0 items, all P1 items except the two noted
+below, and the P2 sweep (dead code, docs, dashboard monitor mode, lockfiles via `npm ci`,
+security hygiene). Verified: 36 unit tests green (`npm test`), 18/18 e2e checks green
+(`bash scripts/test-e2e.sh` with orchestrator + browser-controller running locally),
+dashboard exercised in a browser against a live auto-demo run.
+
+**Deliberately NOT done (needs environment or scope decisions):**
+- **P1.14 participant events** — `OnParticipantEvent` is handled orchestrator-side (LEFT now
+  stops the auto-demo), but the zoom-bot never *sends* these events: it needs a
+  `MeetingParticipantsCtrlEvent` C++ patch that isn't in the patch set. Highest-leverage
+  remaining feature (wait for a human before narrating, greet by name, stop when empty).
+- **P1 latency: Claude streaming + pre-synthesized narration** — Claude now has an 8s timeout,
+  prompt caching, capped history, `latest_short` STT and `optimize_streaming_latency` TTS,
+  but the wrapper still waits for the full completion before TTS, and narration is
+  synthesized per step rather than pre-cached at session start. Both remain worthwhile.
+- **T0.4 CI** — GitHub Actions workflow not added (needs a repo/actions decision).
+- **C++ patches are not compile-checked here** — the Zoom SDK binaries are GCS-only; the
+  zoom-bot Docker build is the compile gate. Build the image before the next call.
+- **Live-call re-verification** — TESTING_POLICY.md Phase-3 checklist items marked
+  NEEDS (RE-)VERIFICATION, especially echo (#11), SDK-death recovery (#12), interrupt cut (#6).
+
+The original plan follows for reference.
 >
 > **How to use this plan:** Work phases in order (P0 → P1 → P2). Per `TESTING_POLICY.md` and the
 > global test-first policy: for every fix, first write (or extend) a test that reproduces the bug,

@@ -117,7 +117,14 @@ if [ -n "$AD_CALL_ID" ]; then
   sleep 3
   AD_INFO=$(curl -sf "$BASE_URL/api/sessions/$AD_CALL_ID" 2>/dev/null || echo '{"state":"unknown"}')
   AD_STATE=$(echo "$AD_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('state',''))" 2>/dev/null || echo "")
+  AD_STEP1=$(echo "$AD_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('step',0))" 2>/dev/null || echo "0")
   check "Auto-demo session still running" "$([ "$AD_STATE" = "presenting" ] && echo true || echo false)"
+
+  # Steps must actually progress over time (assert progression, not a sleep race)
+  sleep 4
+  AD_INFO2=$(curl -sf "$BASE_URL/api/sessions/$AD_CALL_ID" 2>/dev/null || echo '{}')
+  AD_STEP2=$(echo "$AD_INFO2" | python3 -c "import sys,json; print(json.load(sys.stdin).get('step',0))" 2>/dev/null || echo "0")
+  check "Auto-demo steps progress ($AD_STEP1 → $AD_STEP2)" "$([ "$AD_STEP2" -gt "$AD_STEP1" ] && echo true || echo false)"
 
   # Clean up
   curl -sf -X POST "$BASE_URL/api/sessions/$AD_CALL_ID/end" >/dev/null 2>&1 || true
