@@ -14,20 +14,34 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const TEST_PAGE_PORT = 8090;
 let BMA_URL = process.env.BMA_URL || '';
 
+// Clicking a missing selector on the real BMA UI must fall back to hash
+// navigation in ~1s, not stall a live demo step for Playwright's default 30s
+const CLICK_TIMEOUT_MS = 1000;
+
+const VALID_ACTIONS = new Set(['NAVIGATE', 'HIGHLIGHT', 'SCROLL', 'CLICK', 'WAIT', 'SCREENSHOT']);
+
 // ─── Browser session ───
 
 let browser = null;
 let page = null;
+let initializing = null;
 
-async function initBrowser() {
+async function launchBrowser() {
   browser = await chromium.launch({
     headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      ...(process.env.DISPLAY ? [] : ['--headless']),
     ],
+  });
+
+  // A crashed Chromium must not fail every action for the rest of the demo —
+  // the next action relaunches via ensureBrowser()
+  browser.on('disconnected', () => {
+    logger.error('Browser disconnected — will relaunch on next action');
+    browser = null;
+    page = null;
   });
 
   const context = await browser.newContext({
@@ -37,6 +51,23 @@ async function initBrowser() {
 
   page = await context.newPage();
   logger.info('Browser initialized');
+}
+
+async function ensureBrowser() {
+  if (browser && page && !page.isClosed()) return;
+  // Serialize concurrent relaunch attempts
+  if (!initializing) {
+    initializing = (async () => {
+      try {
+        if (browser) await browser.close().catch(() => {});
+        await launchBrowser();
+        if (BMA_URL) await page.goto(BMA_URL).catch(() => {});
+      } finally {
+        initializing = null;
+      }
+    })();
+  }
+  await initializing;
 }
 
 // ─── Test page server ───
@@ -56,6 +87,10 @@ function startTestPageServer() {
     res.end(html);
   });
 
+  server.on('error', (err) => {
+    logger.error({ err: err.message }, 'Test page server error — continuing without it');
+  });
+
   server.listen(TEST_PAGE_PORT, () => {
     logger.info(`Test BMA page served at http://localhost:${TEST_PAGE_PORT}`);
   });
@@ -63,48 +98,33 @@ function startTestPageServer() {
 
 // ─── Section navigation map ───
 
+async function clickOrHash(selector, hash) {
+  const clicked = await page
+    .click(selector, { timeout: CLICK_TIMEOUT_MS })
+    .then(() => true)
+    .catch(() => false);
+  if (!clicked) await page.goto(`${BMA_URL}#${hash}`, { timeout: 10000 });
+}
+
 const SECTION_MAP = {
   home: async () => {
     await page.goto(BMA_URL);
     await page.waitForLoadState('domcontentloaded').catch(() => {});
   },
-  overview: async () => {
-    const clicked = await page.click('[data-section="overview"], nav a[href*="overview"]').then(() => true).catch(() => false);
-    if (!clicked) await page.goto(`${BMA_URL}#overview`);
-  },
-  scan_viewer: async () => {
-    const clicked = await page.click('[data-section="scan"], nav a[href*="scan"]').then(() => true).catch(() => false);
-    if (!clicked) await page.goto(`${BMA_URL}#scan`);
-  },
-  ndc_panel: async () => {
-    const clicked = await page.click('[data-section="ndc"], nav a[href*="differential"]').then(() => true).catch(() => false);
-    if (!clicked) await page.goto(`${BMA_URL}#ndc`);
-  },
-  quantification: async () => {
-    const clicked = await page.click('[data-section="quantification"], nav a[href*="quantif"]').then(() => true).catch(() => false);
-    if (!clicked) await page.goto(`${BMA_URL}#quantification`);
-  },
-  remote_access: async () => {
-    const clicked = await page.click('[data-section="remote"], nav a[href*="remote"]').then(() => true).catch(() => false);
-    if (!clicked) await page.goto(`${BMA_URL}#remote`);
-  },
-  report_export: async () => {
-    const clicked = await page.click('[data-section="report"], nav a[href*="report"]').then(() => true).catch(() => false);
-    if (!clicked) await page.goto(`${BMA_URL}#report`);
-  },
-  integration: async () => {
-    const clicked = await page.click('[data-section="integration"], nav a[href*="integrat"]').then(() => true).catch(() => false);
-    if (!clicked) await page.goto(`${BMA_URL}#integration`);
-  },
-  summary: async () => {
-    const clicked = await page.click('[data-section="summary"], nav a[href*="summary"]').then(() => true).catch(() => false);
-    if (!clicked) await page.goto(`${BMA_URL}#summary`);
-  },
+  overview: () => clickOrHash('[data-section="overview"], nav a[href*="overview"]', 'overview'),
+  scan_viewer: () => clickOrHash('[data-section="scan"], nav a[href*="scan"]', 'scan'),
+  ndc_panel: () => clickOrHash('[data-section="ndc"], nav a[href*="differential"]', 'ndc'),
+  quantification: () => clickOrHash('[data-section="quantification"], nav a[href*="quantif"]', 'quantification'),
+  remote_access: () => clickOrHash('[data-section="remote"], nav a[href*="remote"]', 'remote'),
+  report_export: () => clickOrHash('[data-section="report"], nav a[href*="report"]', 'report'),
+  integration: () => clickOrHash('[data-section="integration"], nav a[href*="integrat"]', 'integration'),
+  summary: () => clickOrHash('[data-section="summary"], nav a[href*="summary"]', 'summary'),
 };
 
 // ─── Action executors ───
 
 async function executeAction(action) {
+  await ensureBrowser();
   if (!page) throw new Error('Browser not initialized');
 
   switch (action.type) {
@@ -114,7 +134,7 @@ async function executeAction(action) {
         await navFn();
         await page.waitForTimeout(300); // let JS settle
       } else {
-        logger.warn({ section: action.section }, 'Unknown section');
+        throw new Error(`Unknown section: ${action.section}`);
       }
       break;
     }
@@ -141,7 +161,7 @@ async function executeAction(action) {
     }
     case 'CLICK': {
       if (action.selector) {
-        await page.click(action.selector);
+        await page.click(action.selector, { timeout: CLICK_TIMEOUT_MS });
       }
       break;
     }
@@ -169,12 +189,24 @@ function loadBrowserProto() {
   return grpc.loadPackageDefinition(packageDef);
 }
 
+// proto-loader is configured with `enums: String`, so `type` arrives as the
+// enum NAME ("HIGHLIGHT"), not a number. The old numeric-index mapping made
+// every non-NAVIGATE action silently execute as NAVIGATE.
+function resolveActionType(type) {
+  if (typeof type === 'number') {
+    return ['NAVIGATE', 'HIGHLIGHT', 'SCROLL', 'CLICK', 'WAIT', 'SCREENSHOT'][type] || null;
+  }
+  const name = String(type || '').toUpperCase();
+  return VALID_ACTIONS.has(name) ? name : null;
+}
+
 async function handleExecuteAction(call, callback) {
   try {
     const { type, selector, section, direction, amount, wait_ms } = call.request;
-    const actionType = ['NAVIGATE', 'HIGHLIGHT', 'SCROLL', 'CLICK', 'WAIT', 'SCREENSHOT'][
-      typeof type === 'number' ? type : 0
-    ] || type;
+    const actionType = resolveActionType(type);
+    if (!actionType) {
+      return callback(null, { success: false, message: `Unknown action type: ${type}` });
+    }
 
     await executeAction({
       type: actionType,
@@ -187,10 +219,11 @@ async function handleExecuteAction(call, callback) {
 
     callback(null, {
       success: true,
+      message: actionType.toLowerCase(),
       current_url: page?.url() || '',
     });
   } catch (err) {
-    logger.error({ err }, 'Action execution failed');
+    logger.error({ err: err.message }, 'Action execution failed');
     callback(null, { success: false, message: err.message });
   }
 }
@@ -199,35 +232,44 @@ async function handleInitialize(call, callback) {
   try {
     const { url, username, password } = call.request;
 
-    if (!browser) {
-      await initBrowser();
-    }
+    await ensureBrowser();
 
     const targetUrl = url || BMA_URL;
     if (targetUrl) {
       await page.goto(targetUrl);
 
       if (username && password) {
-        await page.fill('input[type="text"], input[name="username"], #username', username).catch(() => {});
-        await page.fill('input[type="password"], #password', password).catch(() => {});
-        await page.click('button[type="submit"], input[type="submit"]').catch(() => {});
-        await page.waitForLoadState('networkidle').catch(() => {});
+        const filledUser = await page
+          .fill('input[type="text"], input[name="username"], #username', username, { timeout: 3000 })
+          .then(() => true).catch(() => false);
+        const filledPass = await page
+          .fill('input[type="password"], #password', password, { timeout: 3000 })
+          .then(() => true).catch(() => false);
+        const submitted = await page
+          .click('button[type="submit"], input[type="submit"]', { timeout: 3000 })
+          .then(() => true).catch(() => false);
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+        if (!(filledUser && filledPass && submitted)) {
+          logger.warn({ filledUser, filledPass, submitted }, 'Login flow incomplete — check BMA selectors');
+        }
       }
     }
 
     callback(null, { success: true, current_url: page?.url() || '' });
   } catch (err) {
-    logger.error({ err }, 'Browser init failed');
+    logger.error({ err: err.message }, 'Browser init failed');
     callback(null, { success: false, message: err.message });
   }
 }
 
 async function handleScreenshot(call, callback) {
   try {
+    await ensureBrowser();
     const imageData = await page.screenshot({ type: 'png' });
     callback(null, { image_data: imageData, content_type: 'image/png' });
   } catch (err) {
-    callback(null, { image_data: Buffer.alloc(0), content_type: '' });
+    // A real error status — an empty buffer is indistinguishable from success
+    callback({ code: grpc.status.INTERNAL, message: err.message });
   }
 }
 
@@ -235,7 +277,7 @@ async function handleGetPageState(call, callback) {
   callback(null, {
     url: page?.url() || '',
     title: await page?.title().catch(() => '') || '',
-    is_loaded: !!page,
+    is_loaded: !!page && !page.isClosed(),
   });
 }
 
@@ -249,6 +291,14 @@ async function main() {
     logger.info({ BMA_URL }, 'Using test BMA page (no BMA_URL set)');
   }
 
+  // Pre-init the browser BEFORE binding gRPC so the first ExecuteAction
+  // never races a not-yet-launched Chromium
+  await ensureBrowser();
+  await page.goto(BMA_URL).catch((err) => {
+    logger.warn({ err: err.message }, 'Initial BMA navigation failed');
+  });
+  logger.info({ url: BMA_URL }, 'Browser pre-loaded BMA');
+
   const proto = loadBrowserProto();
   const server = new grpc.Server();
 
@@ -261,14 +311,12 @@ async function main() {
 
   const port = process.env.GRPC_PORT || '50053';
   server.bindAsync(`0.0.0.0:${port}`, grpc.ServerCredentials.createInsecure(), (err) => {
-    if (err) throw err;
+    if (err) {
+      logger.error({ err }, `Failed to bind browser-controller gRPC on :${port}`);
+      process.exit(1);
+    }
     logger.info(`Browser controller gRPC listening on :${port}`);
   });
-
-  // Pre-init browser and navigate to BMA
-  await initBrowser();
-  await page.goto(BMA_URL);
-  logger.info({ url: BMA_URL }, 'Browser pre-loaded BMA');
 }
 
 main().catch((err) => {

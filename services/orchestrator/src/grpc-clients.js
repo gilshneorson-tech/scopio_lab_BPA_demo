@@ -46,6 +46,11 @@ export function createDemoBrowserClient(address = 'localhost:50057') {
   return new proto.scopio.browser.DemoBrowser(
     address,
     grpc.credentials.createInsecure(),
+    {
+      // PlayAudio carries a full narration utterance of PCM (~1MB per 30s of speech)
+      'grpc.max_send_message_length': 32 * 1024 * 1024,
+      'grpc.max_receive_message_length': 32 * 1024 * 1024,
+    },
   );
 }
 

@@ -26,13 +26,19 @@ public:
     void setTTSFilePath(const string& path);
 
 private:
-    IZoomSDKAudioRawDataSender* m_sender;
+    // atomic: onMicUninitialized (SDK thread) nulls this while sendLoop
+    // (our thread) is reading it — a plain pointer is a use-after-free race
+    atomic<IZoomSDKAudioRawDataSender*> m_sender;
     atomic<bool> m_canSend;
     atomic<bool> m_running;
+    atomic<bool> m_threadStarted;
     string m_ttsFilePath;
+    string m_stopFilePath;
     thread m_sendThread;
 
     void sendLoop();
+    bool stopRequested();
+    void truncateTTSFile();
 };
 
 #endif

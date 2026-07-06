@@ -122,6 +122,14 @@ const demoMachine = createMachine({
 
     presenting: {
       on: {
+        // The real participant may join after the manual-mode auto-join —
+        // keep the context name in sync with who is actually on the call.
+        PROSPECT_JOINED: {
+          actions: assign({
+            prospectName: ({ context, event }) =>
+              event.prospectName || context.prospectName,
+          }),
+        },
         ADVANCE: [
           {
             guard: ({ context }) => context.currentStep < DEMO_STEPS.length - 1,

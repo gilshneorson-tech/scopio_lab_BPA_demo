@@ -51,18 +51,20 @@ class Zoom : public Singleton<Zoom> {
     time_point m_iat;
     time_point m_exp;
 
-    IMeetingService* m_meetingService;
-    ISettingService* m_settingService;
-    IAuthService* m_authService;
+    // In-class initializers: clean() dereferences these — they must be null,
+    // not garbage, when init only partially completed
+    IMeetingService* m_meetingService = nullptr;
+    ISettingService* m_settingService = nullptr;
+    IAuthService* m_authService = nullptr;
 
-    IZoomSDKRenderer* m_videoHelper;
-    ZoomSDKRendererDelegate* m_renderDelegate;
+    IZoomSDKRenderer* m_videoHelper = nullptr;
+    ZoomSDKRendererDelegate* m_renderDelegate = nullptr;
 
-    IZoomSDKAudioRawDataHelper* m_audioHelper;
-    ZoomSDKAudioRawDataDelegate* m_audioSource;
+    IZoomSDKAudioRawDataHelper* m_audioHelper = nullptr;
+    ZoomSDKAudioRawDataDelegate* m_audioSource = nullptr;
 
-    ZoomSDKVideoSource* m_videoSource;
-    ZoomSDKAudioSource* m_virtualMic;
+    ZoomSDKVideoSource* m_videoSource = nullptr;
+    ZoomSDKAudioSource* m_virtualMic = nullptr;
 
     SDKError createServices();
     void generateJWT(const string& key, const string& secret);
@@ -106,6 +108,12 @@ class Zoom : public Singleton<Zoom> {
         if (hasError(err)) {
             Log::info("requesting local recording privilege");
             recCtl->RequestLocalRecordingPrivilege();
+        } else {
+            // Already privileged (bot is host/co-host or the account
+            // auto-grants local recording): the privilege-changed callback
+            // never fires, so start directly — without this the raw audio,
+            // virtual mic, and screen share silently never start.
+            startRawRecording();
         }
     };
 

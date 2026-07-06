@@ -1,9 +1,8 @@
-version: "3.9"
-
 services:
   # ─── Infrastructure ───
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -20,6 +19,7 @@ services:
     build:
       context: .
       dockerfile: services/orchestrator/Dockerfile
+    restart: unless-stopped
     ports:
       - "3000:3000"
       - "50051:50051"
@@ -34,7 +34,6 @@ services:
       - GRPC_PORT=50051
       - AGENT_NAME=${AGENT_NAME:-Alex}
       - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
       - TTS_MODEL=${TTS_MODEL:-eleven_turbo_v2}
       - LOG_LEVEL=${LOG_LEVEL:-info}
@@ -56,6 +55,9 @@ services:
     build:
       context: .
       dockerfile: services/zoom-bot/Dockerfile
+    restart: unless-stopped
+    # Reap Xvfb/PulseAudio/SDK zombies and forward signals to PID 1
+    init: true
     environment:
       - ZOOM_ACCOUNT_ID=${ZOOM_ACCOUNT_ID}
       - ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID}
@@ -63,33 +65,42 @@ services:
       - ZOOM_MEETING_ID=${ZOOM_MEETING_ID}
       - ZOOM_MEETING_PASSWORD=${ZOOM_MEETING_PASSWORD}
       - ORCHESTRATOR_GRPC_ADDR=orchestrator:50051
+      - ORCHESTRATOR_HTTP_URL=http://orchestrator:3000
       - STT_GRPC_ADDR=stt-service:50056
       - TTS_GRPC_ADDR=tts-service:50054
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
       - AUDIO_INPUT_FILE=${AUDIO_INPUT_FILE}
       - AUDIO_OUTPUT_DIR=/data/audio
       - AUDIO_OUTPUT=${AUDIO_OUTPUT:-file}
       - AUTO_DEMO=${AUTO_DEMO:-true}
       - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
+      - PROSPECT_NAME=${PROSPECT_NAME}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - DISPLAY=:99
     volumes:
       - audio-data:/data/audio
       - tts-audio:/tmp/zoom-audio
     depends_on:
-      - orchestrator
-      - stt-service
-      - tts-service
+      # zoom-bot exits immediately if the orchestrator isn't accepting
+      # sessions yet — wait for real health, not just container start
+      orchestrator:
+        condition: service_healthy
+      stt-service:
+        condition: service_healthy
+      tts-service:
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          memory: 1G
+          # Runs Xvfb + PulseAudio + Zoom SDK (C++) + Node + headed Chromium
+          # at 1920x1080 — 1G caused OOM-kills mid-call
+          memory: 3G
 
   browser-controller:
     build:
       context: .
       dockerfile: services/browser-controller/Dockerfile
+    restart: unless-stopped
     environment:
       - GRPC_PORT=50053
       - BMA_URL=${BMA_URL}
@@ -109,10 +120,12 @@ services:
     build:
       context: .
       dockerfile: services/stt-service/Dockerfile
+    restart: unless-stopped
     environment:
       - GRPC_PORT=50056
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-scopio-lab-bpa-demo}
       - STT_LANGUAGE=${STT_LANGUAGE:-en-US}
+      - STT_MODEL=${STT_MODEL:-latest_short}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import grpc; ch=grpc.insecure_channel('localhost:50056'); grpc.channel_ready_future(ch).result(timeout=2)\""]
@@ -127,11 +140,13 @@ services:
     build:
       context: .
       dockerfile: services/tts-service/Dockerfile
+    restart: unless-stopped
     environment:
       - GRPC_PORT=50054
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
       - TTS_MODEL=${TTS_MODEL:-eleven_turbo_v2}
+      - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('net').connect(50054).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
@@ -146,9 +161,11 @@ services:
     build:
       context: .
       dockerfile: services/claude-wrapper/Dockerfile
+    restart: unless-stopped
     environment:
       - GRPC_PORT=50052
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-5}
       - AGENT_NAME=${AGENT_NAME:-Alex}
       - DEMO_LANGUAGE=${DEMO_LANGUAGE:-en}
       - LOG_LEVEL=${LOG_LEVEL:-info}
@@ -165,6 +182,7 @@ services:
     build:
       context: .
       dockerfile: services/persistence/Dockerfile
+    restart: unless-stopped
     environment:
       - GRPC_PORT=50055
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-scopio-lab-bpa-demo}

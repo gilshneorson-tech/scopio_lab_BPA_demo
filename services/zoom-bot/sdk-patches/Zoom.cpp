@@ -187,6 +187,15 @@ SDKError Zoom::leave() {
 }
 
 SDKError Zoom::clean() {
+    // Unsubscribe raw-data helpers BEFORE destroying the services that own
+    // them — the previous order used SDK helpers whose meeting service had
+    // already been destroyed.
+    if (m_audioHelper)
+        m_audioHelper->unSubscribe();
+
+    if (m_videoHelper)
+        m_videoHelper->unSubscribe();
+
     if (m_meetingService)
         DestroyMeetingService(m_meetingService);
 
@@ -195,12 +204,6 @@ SDKError Zoom::clean() {
 
     if (m_authService)
         DestroyAuthService(m_authService);
-
-    if (m_audioHelper)
-        m_audioHelper->unSubscribe();
-
-    if (m_videoHelper)
-        m_videoHelper->unSubscribe();
 
     delete m_renderDelegate;
     return CleanUPSDK();
@@ -236,7 +239,12 @@ SDKError Zoom::startRawRecording() {
         m_renderDelegate->setFilename(m_config.videoFile());
         
         auto participantCtl = m_meetingService->GetMeetingParticipantsController();
-        auto uid = participantCtl->GetParticipantsList()->GetItem(0);
+        auto participants = participantCtl ? participantCtl->GetParticipantsList() : nullptr;
+        if (!participants || participants->GetCount() == 0) {
+            Log::error("no participants available for raw video subscription");
+            return SDKERR_INTERNAL_ERROR;
+        }
+        auto uid = participants->GetItem(0);
 
         m_videoHelper->setRawDataResolution(ZoomSDKResolution_720P);
         err = m_videoHelper->subscribe(uid, RAW_DATA_TYPE_VIDEO);

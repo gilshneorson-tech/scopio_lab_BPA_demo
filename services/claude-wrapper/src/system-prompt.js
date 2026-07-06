@@ -10,11 +10,12 @@ const LANGUAGE_INSTRUCTION = {
   fr: 'Réponds toujours en français. Toutes tes réponses doivent être en français.',
 };
 
-// Voice IDs per language
-export const VOICE_IDS = {
-  en: 'XrExE9yKIg1WjnnlVkGX', // Matilda — professional English
-  fr: 'xNtG3W2oqJs0cJZuTyBc', // Chloé — native French
-};
+// Browser sections the demo can navigate to (single source of truth for
+// validating the model's "section" field)
+export const VALID_SECTIONS = new Set([
+  'home', 'overview', 'scan_viewer', 'ndc_panel', 'quantification',
+  'remote_access', 'report_export', 'integration', 'summary',
+]);
 
 export const SYSTEM_PROMPT = `You are a Scopio Labs product specialist conducting a 10-minute demo of the Full-Field BMA (Bone Marrow Aspirate) application on a Zoom call.
 
@@ -96,14 +97,14 @@ ${historyText || '(none yet)'}
 Prospect just said: "${prospectTranscript}"
 
 Decide one of:
-- ADVANCE: proceed to next demo step (prospect seems satisfied, no question)
-- ANSWER: respond to prospect's question, then continue
-- REPEAT: prospect seems confused, re-explain current step
-- CLOSE: prospect signals they are done or wants to wrap up
+- ADVANCE: proceed to next demo step (prospect seems satisfied, no question). Set "response" to "" — nothing is spoken.
+- ANSWER: respond to prospect's question, then continue. "response" is spoken out loud (2-3 sentences).
+- REPEAT: prospect seems confused, re-explain the current step in "response" using different words.
+- CLOSE: prospect signals they are done or wants to wrap up. Put a brief, warm one-sentence wrap-up in "response".
 
 Available browser sections: home, overview, scan_viewer, ndc_panel, quantification, remote_access, report_export, integration, summary
-If the prospect asks to see a specific feature again (e.g. "show me the scan viewer"), include the section name in your response.
+If the prospect asks to see a specific feature (e.g. "show me the scan viewer again"), set the "section" JSON field to that exact section id — putting the name only in the spoken response does NOT navigate the screen. Works with ANSWER and REPEAT. Otherwise set "section" to null.
 
-Respond in this exact JSON format:
-{"action": "ADVANCE|ANSWER|REPEAT|CLOSE", "response": "your 2-3 sentence response to say out loud", "section": "section_name_or_null"}`;
+Respond with ONLY this JSON object and nothing else — no preamble, no explanation:
+{"action": "ADVANCE|ANSWER|REPEAT|CLOSE", "response": "what to say out loud (or empty string)", "section": "section_id_or_null"}`;
 }

@@ -72,9 +72,36 @@ message PageState {
 service DemoBrowser {
   // Navigate the screen-shared browser to a demo section
   rpc NavigateSection(NavigateSectionRequest) returns (BrowserResult);
+
+  // Play PCM audio into the meeting via the virtual mic.
+  // zoom-bot serializes playback (one utterance at a time) and responds
+  // when playback has finished (or was stopped) — the response is the
+  // "playback finished" signal the orchestrator paces narration with.
+  rpc PlayAudio(PlayAudioRequest) returns (PlayAudioResult);
+
+  // Stop the utterance currently playing and drop anything queued
+  // (prospect interrupted — cut narration immediately).
+  rpc StopAudio(StopAudioRequest) returns (PlayAudioResult);
 }
 
 message NavigateSectionRequest {
   string call_id = 1;
   string section = 2;
+}
+
+message PlayAudioRequest {
+  string call_id = 1;
+  bytes audio_data = 2;   // 16-bit mono PCM
+  int32 sample_rate = 3;  // defaults to 16000
+}
+
+message PlayAudioResult {
+  bool success = 1;
+  string message = 2;
+  int32 duration_ms = 3;  // estimated playback duration of the audio
+  bool stopped = 4;       // true if playback was cut short by StopAudio
+}
+
+message StopAudioRequest {
+  string call_id = 1;
 }
